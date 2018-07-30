@@ -3,10 +3,17 @@
 #+DATE:        2017-06-06
 
 * Recipe of Deep Learning
-  Deep learning, 虽然参数很多，但确实不容易 overfitting。
-  K-NN, DecisionTree 训练集上一做就是 100%正确，这才是 overfitting。
-  DL 在训练集上就不太容易获得好的结果，所以即便在测试集上也不好，这个也
-  不算是 overfitting
+  Deep learning, 虽然参数很多，但确实不容易 overfitting。K-NN, DecisionTree 训练
+  集上一做就是 100%正确，这才是 overfitting。DL 在训练集上就不太容易获得好的结果，
+  所以即便在测试集上也不好，这个也不算是 overfitting
+
+  #+BEGIN_QUOTE
+  DL 有一个区别于 DT, RF, GBDT 的重要步骤, 就是训练完之后要先检查下 model 在
+  *[训练集]* 上的效果, 而不是 *[测试集]*. 为什么呢, DL 需要同时参考训练集和测试
+  集来判断是否 overfitting 等等
+
+  而对于 DT,RF,GBDT 训练完成(如果不出错),训练集上的正确率一般都是 100%.
+  #+END_QUOTE
 
   #+DOWNLOADED: /tmp/screenshot.png @ 2017-06-10 12:56:40
   [[file:Recipe of Deep Learning/screenshot_2017-06-10_12-56-40.png]]
@@ -46,26 +53,69 @@
 
 *** 为什么 layer 越多，正确率不增反降？
     一个可能的原因是：梯度消失 and 梯度爆炸
-*** Vanishing Gradient Problem
+** Vanishing Gradient Problem
     #+DOWNLOADED: /tmp/screenshot.png @ 2017-06-10 14:52:06
     [[file:Recipe of Deep Learning/screenshot_2017-06-10_14-52-06.png]]
+
+    #+BEGIN_EXAMPLE
+                    input layer 附近的参数 w 对于
+                  /  loss function 的微分会非常小.
+                  |             |
+                  |             |
+                  |             | 如果设定相同的 learning
+                  |             | rate with下面
+ -----------      |             |
+ w near input     |             v
+ layer just       |     参数 w update 非常慢
+ random; while    |
+ w near output   <|
+ has converged    |  output layer 附近的参数 w 对于
+ -----------      |  loss function 的微分会非常大.
+                  |              |
+                  |              |
+                  |              | 如果设定相同的 learning
+                  |              | rate with上面
+                  |              |
+                  \              v
+                         参数 w update 非常快
+
+    #+END_EXAMPLE
 *** sigmoid 会衰减变化量
     backpropagtion 的意义是用梯度，也就是微分。
     求的是某一个 w 的增加量对于 loss-fn(cross-entropy)的变化量的比值：
-    ∂C/∂w = ?
-    但是由于 sigmoid 函数对于·「差距的衰减」作用，
-    #+DOWNLOADED: /tmp/screenshot.png @ 2017-06-10 14:49:54
+
+    $\frac{\partial{C}}{\partial{w}} = \frac{\bigtriangleup{C}}{\bigtriangleup{w}}$
+
+    但是由于 sigmoid 函数对于·「差距的衰减」作用， 如下图所示:
+
+    #+DOWNLOADED: /tmp/screenshot.png @ 2018-07-20 02:48:23
+    [[file:Recipe of Deep Learning/screenshot_2018-07-20_02-48-23.png]]
+
+
     [[file:Recipe of Deep Learning/screenshot_2017-06-10_14-49-54.png]]
-    导致越靠近 input-layer 的 w 的变化量:∂w 每经过一个神经元
-    (sigmoid)都会变小，所以随着经过的 layer 越来越多，更新 w 对于 output layer 的
-    影响越来越小，所以最后 output:y' 几乎是不变的。所以∂C 也几乎是不变的。
-    所以 ∂C/∂w = every SMALL
+
+    导致越靠近 input-layer 的 w 的变化量: $\bigtriangleup{w}$ 所带来的计算结果(will contribute to
+    finall loss)每经过一个神经元(sigmoid)都会变小，所以随着经过的 layer 越来越多，
+    更新这些 w 对于 output layer 的影响越来越小，所以最后 output:y' 几乎是不变的。所
+    以 C 也几乎是不变的 --- $\bigtriangleup{C}$ 几乎为 0。 所以
+
+    for w near input layer:
+
+    ∂C/∂w = every SMALL
+
+    then w near input layer update very small each time, for a long run-time
+    it's still *random*
 
     反之靠近 output-layer 的 w 的变化量:∂w 由于经过的神经元很少，衰减很少，对于
-    output-layer 的影响就大，∂C 就大。
-    所以 ∂C/∂w = every LARGE
-    #+DOWNLOADED: /tmp/screenshot.png @ 2017-06-10 14:51:17
-    [[file:Recipe of Deep Learning/screenshot_2017-06-10_14-51-17.png]]
+    output-layer 的影响就大，∂C 就大。所以
+
+    for w near output layer:
+
+    ∂C/∂w = every LARGE
+
+    then w near output layer update very large each time, for a short run-time
+    it's converged, but it converged based on the random w near input layer,
+    although converged, lead to bad prediction.
 
 *** 如何解决：更换激活函数为 ReLU
     z - input
@@ -198,10 +248,10 @@
 
     #+BEGIN_QUOTE
     不用太担心 local-minimum 的问题，其实在 error-surface 上没有太多
-    local-minimum 的情况。因为如果你是 local-minimum 你就必须在每一个
-    dimension 都是如上图的形状，假设某一个参数 w 相对 Loss-fn 是这种形状的
-    概率是 p，因为 NN 参数非常多，那么 1000 个 w 同时出现这种形状的概率是 p^1000
-    参数越多，local-minimum 出现的概率越低。
+    local-minimum 的情况。因为如果你是 local-minimum 你就必须在每一个dimension
+    都是如上图的形状，假设某一个参数 w 相对 Loss-fn 是这种形状的概率是 p，因为
+    NN 参数非常多，那么 1000 个 w 同时出现这种形状的概率是 p^1000参数越多，
+    local-minimum 出现的概率越低。
     #+END_QUOTE
 
 
