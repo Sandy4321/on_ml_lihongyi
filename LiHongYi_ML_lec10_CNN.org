@@ -1,0 +1,341 @@
+#+TITLE: lec-10 CNN
+#+TAGS: ML, DL, 李宏毅
+#+DATE:        2017-06-06
+* CNN
+why CNN for image?
+
+Fully connected work has too large mount of parameters
+
+#+DOWNLOADED: /tmp/screenshot.png @ 2017-06-10 20:15:45
+[[file:CNN/screenshot_2017-06-10_20-15-45.png]]
+
+
+#+DOWNLOADED: /tmp/screenshot.png @ 2018-08-27 14:56:21
+[[file:CNN/screenshot_2018-08-27_14-56-21.png]]
+
+基于对图像处理方面的理解设计了CNN这样的网络架构, 理解来自三个方面:
+1. 想识别图像中的某种模式不需要看整张图片,只需要其中的 *一个小部分* 即可.
+2. 同样的模式会在一张图片的 *不同区域* *多次出现*.
+3. 图片的 *解析度降低* 并 *不影响* 对图片的 *识别*.
+
+#+BEGIN_EXAMPLE
+
+ *一小部分*      ----+---- Convolution
+                   |
+ *不同区域*      ----+
+
+ *降低解析度*    --------- Max Pooling
+
+#+END_EXAMPLE
+
+
+#+DOWNLOADED: /tmp/screenshot.png @ 2018-08-27 15:01:45
+[[file:CNN/screenshot_2018-08-27_15-01-45.png]]
+
+
+*Filter*
+
+filter 是CNN自己学出来的. 你需要设置的仅仅是三项:
+1. filter 数量
+2. filter 维度
+3. filter 步进
+
+
+filter 要做的事情就是与他圈中的图像的局部(二者都"拉"是一个长向量)做内积. 那么
+filter 每次步进之后做内积的结果就可以排布成一张新的"小图". 这张新的"小图"中只包
+含了这样的信息:原图中相同大小的能匹配 filter 的模式 *有几个* 以及 *他们的相似程
+度*, 这可以理解为对原图的像素进行的一种特征转换和萃取:
+
+#+BEGIN_QUOTE
+把 *以像素为单位* 的图片转换成 *以pattern匹配程度为单位* 的小图.
+#+END_QUOTE
+
+#+BEGIN_EXAMPLE
+把 *以像素为单位* 的图片转换成 *以pattern匹配程度为单位* 的小图.
+   ==========             =====================
+   原图(矩阵)中每个值        新图(矩阵)中每个值
+   表示像素点的灰 >度<          表示与filter的匹配程 >度<
+#+END_EXAMPLE
+
+每张小图只包含对一种 filter 匹配程度的概括.如果有 *多个filter* 那么就可以生成 *
+多张小图*, 每张小图都表示了对各自 filter 匹配与包含程度的概括, 这种高度概括的结
+果就叫做 *feature map*.
+
+对于灰度图片, 每个 filter 都是二维的 ~(height, width)~.
+[[file:CNN/screenshot_2018-08-27_15-09-18.png]]
+
+
+对于彩色图片, 每个 filter 都是三维的 ~(height, width, channel)~.
+[[file:CNN/screenshot_2018-08-27_15-10-48.png]]
+
+*Convolution 的本质*
+
+#+BEGIN_QUOTE
+结论: Convolution layer 的本质其实就是 fully-connected layer 把一些权重参数拿掉
+而已.
+#+END_QUOTE
+如果把 图像/filter/featureMap 全部拉成长向量, 就可以很清楚的看到 Convolution
+layer 在做什么.
+
+[[file:CNN/screenshot_2018-08-27_15-15-28.png]]
+
+fully connected layer: W 矩阵之 *行* 与input之 *列* 内积得到output *一个神经元*
+#+BEGIN_EXAMPLE
+
+                   +-----------------------------+
+                   |                             |
+            +-----内积-------+                    |
+            |               |                    |
+            |               |                    |
+  /------------------\      |   7*1              |
+ +--+--+--+--+--+--+--+     |  / *          3*1  |
+ | 1| 2| 3| 4| 5| 0| 7|     |  | *           * <-+
+ +--+--+--+--+--+--+--+     |  | *
+ | 7| 9| 0| 1| 2| 3| 3|     +--| *           *
+ +--+--+--+--+--+--+--+        | *
+ | 0| 1| 3| 4| 4| 3| 0|        | *           *
+ +--+--+--+--+--+--+--+        \ *
+     W metrix
+#+END_EXAMPLE
+
+
+Convolutional Layer 中只有很少一部分 input 中的神经元参与了内积运算.
+#+BEGIN_EXAMPLE
+
+                             +-------------------------------+
+                             |                               |
+                +-----------内积-------+                      |
+                |                     |                      |
+                |                     |                      |
+            /------\                  |     7*1              |
+one row    +--+--+--+                 +--|<- *          3*1  |
+one filter | 1| 7| 1|                    |<- *           * <-+
+           +--+--+--+                        *
+other row  | 1| 7| 1| ....                   *           * <...
+share same +--+--+--+    .              .|<- *                .
+weight     | 1| 7| 1|    .              .|<- *           *    .
+           +--+--+--+    .              .    *                .
+                         .              .                     .
+                         .              .                     .
+ Smaller W metrix        ..................内积.................
+#+END_EXAMPLE
+
+
+#+DOWNLOADED: /tmp/screenshot.png @ 2018-08-27 16:14:08
+[[file:CNN/screenshot_2018-08-27_16-14-08.png]]
+#+DOWNLOADED: /tmp/screenshot.png @ 2018-08-27 16:13:13
+[[file:CNN/screenshot_2018-08-27_16-13-13.png]]
+在BP算法自动更新参数时怎么保证这种 W 矩阵必须 share weights 的要求呢.
+
+那几个权重需要在更新的过程中保持相同(weight share)我就把那几个权重的梯度 *先取平
+均再更新*.以此保证这些权重每次的更新量都是相同的.
+
+$w^{share^{i+1}} \leftarrow w^{share^{i}} + \frac{\nabla{w^{share^{i}}_1} +\nabla{w^{share^{i}}_2} +\nabla{w^{share^{i}}_3} +...}{n}$
+
+*MaxPooling*
+
+*MaxPooling 的本质就是在做降低清晰度---SubSampling*, 为什么要这么做呢, 前面说过
+卷基层在做的事情是把以 *像素* 为单位的矩阵or长向量,转换成以 *pattern match
+degree* 为单位的矩阵or长向量. 支撑我们做分组的原因是: 因为我们滑动 filter 的步进
+可能设置的很小比如 ~stride=1~, 某一个pattern被检测到很高的匹配度, 等他步进到下一
+个位置时 *原来pattern的一部分仍然会出现在 filter 框住的范围内*, 由于被框住的这部
+分只是原来pattern的一小段, 所以分数稍低一些. 所以原图中一个大pattern的各个部分会
+被移动的filter不断的检测和匹配. 而且这种显现对于图片来说就表现为featuremap中某个
+item分数较高, 周围一堆分数较小的items围绕着.
+
+所以基于以上原因, 我们可以做 maxpooling 用来去掉周围那些只匹配了一部分得到的较小
+的 *pattern match degree*. 而只留下其中 *最大的 pattern match degree*.
+
+#+DOWNLOADED: /tmp/screenshot.png @ 2018-08-27 16:23:56
+[[file:CNN/screenshot_2018-08-27_16-23-56.png]]
+
+
+#+DOWNLOADED: /tmp/screenshot.png @ 2018-08-27 16:25:07
+[[file:CNN/screenshot_2018-08-27_16-25-07.png]]
+
+[[file:CNN/screenshot_2018-08-27_16-25-30.png]]
+
+MaxPooling 的具体做法是: 把 Feature Map 中的元素几个几个分成一组,然后做
+~max(attr1, attr2, attr3,...)~ 取每组中 *值最大的那一个保留*, *其余丢弃*.
+
+但是 ~max()~ 操作似乎是没办法微分的, 这之后会讲一种激活函数叫做 ~maxout~ 他做的事
+情跟 maxpooling 是完全相同的, 先分组然后取max, 而且他确实是 *可以微分* 的.
+
+#+BEGIN_EXAMPLE
+image     feature map
+ *
+ *          * ---+
+ *               |-- max
+ *          * ---+
+ *
+ *          * ---+
+ *               |-- max
+ *          * ---+
+ *
+#+END_EXAMPLE
+
+
+[[file:CNN/screenshot_2018-08-27_17-18-30.png]]
+
+maxpooling 有以下三个好处:
+1. 某个大的匹配度已经可以决定这附近有没有类似 filter 的模式出现, 周围其他小的分
+   数只是一种长尾效应, 可以忽略.
+2. 符合较低解析度也能辨认物体的生活经验.
+3. 进一步降低参数量.
+
+
+
+#+DOWNLOADED: /tmp/screenshot.png @ 2018-08-27 17:24:15
+[[file:CNN/screenshot_2018-08-27_17-24-15.png]]
+
+
+
+#+DOWNLOADED: /tmp/screenshot.png @ 2018-08-27 17:25:29
+[[file:CNN/screenshot_2018-08-27_17-25-29.png]]
+
+*Flatten*
+
+
+#+DOWNLOADED: /tmp/screenshot.png @ 2018-08-27 17:26:01
+[[file:CNN/screenshot_2018-08-27_17-26-01.png]]
+
+*CNN in Keras*
+
+Convolution layer
+
+Convolution layer 中的 filter 和 maxpooling 在编码时需要注意, 输入图片的通道数并
+没有体现在 filter 和 maxpooling 的参数上, filter 只需要设置个数和形状;
+maxpooling 只需要设置形状.
+
+为什么呢, 因为 *不论输入的图片的深度是多少, filter 和 maxpooling 都会自动适配*.
+举例来说, 一张 ~(25*13*13)~ 的图片经过 filter 参数为 ~(50, 3, 3)~ 的卷基层之后得
+到的输出是 ~(50*11*11)~ 的 featureMap. 但是每个 filter 的参数量是不是 11*11 而是
+~25*11*11~.
+
+#+BEGIN_SRC python :tangle yes :exports code :async t :results output
+  # (25,         3, 3)
+  #  --          ----
+  # 25个filter   每个filter都是3*3形状
+
+  # (1,          28, 28)
+  #  --          ------
+  # 通道数        每个样本(图片)的长宽像素
+  model.add( Convolution2D(25, 3, 3),
+             input_shape=(1, 28, 28)) # 与 Dense layer 一样
+                                      # input shape 只需要在第一层卷基层设置
+                                      # 之后不需要设置, 连接时自动适配.
+#+END_SRC
+
+MaxPooling
+#+BEGIN_SRC python :tangle yes :exports code :async t :results output
+  model.add(MaxPooling2D((2,2)))
+  #                      ----
+  # 每(2*2)个featuremap中的值划分为一组,并取最大值.
+#+END_SRC
+
+
+#+DOWNLOADED: /tmp/screenshot.png @ 2018-08-27 17:32:24
+[[file:CNN/screenshot_2018-08-27_17-32-24.png]]
+
+
+#+DOWNLOADED: /tmp/screenshot.png @ 2018-08-27 17:46:36
+[[file:CNN/screenshot_2018-08-27_17-46-36.png]]
+
+
+[[file:CNN/screenshot_2018-08-27_17-47-24.png]]
+
+
+我们如何能知道 CNN 到底在干什么.
+
+训练CNN: 固定 x 更新 W 以实现最小化 loss.
+窥探CNN: 固定 W 更新 x 以实现最大化 某个filter的激活度: $a^{k} = \sum_{i=1}^{11}\sum_{j=1}^{11}{a_{ij}^k}$
+
+[[file:CNN/screenshot_2018-08-27_17-55-11.png]]
+
+
+[[file:CNN/screenshot_2018-08-27_17-59-09.png]]
+
+
+#+DOWNLOADED: /tmp/screenshot.png @ 2018-08-27 17:59:59
+[[file:CNN/screenshot_2018-08-27_17-59-59.png]]
+
+
+
+#+DOWNLOADED: /tmp/screenshot.png @ 2018-08-27 18:01:07
+[[file:CNN/screenshot_2018-08-27_18-01-07.png]]
+#+DOWNLOADED: /tmp/screenshot.png @ 2018-08-27 18:04:08
+[[file:CNN/screenshot_2018-08-27_18-04-08.png]]
+
+
+*Deep Dream*
+
+照片丢进 CNN 中去训练, 然后把某一个CNN中的hidden layer(可以是某个 FeatureMap 或
+者是 flatten 之后的 fully connected layer)拿出来, 他是一个长向量, 把向量中的 *正
+值调大负值调小*. 然后把这个向量作为 *目标*, 用梯度下降法去更新输入的图片. 这会是
+什么效果.
+
+以 feature map 为例, feature map 中每一位记录的都是某个pattern(或简单或复杂, 越
+往后的FeatureMap表示的是越复杂pattern的匹配度, 越往前的FeatureMap表示的是越简单
+的pattern的匹配度.)匹配程度, 当你加大原本为正的值, 并想找到一个图片可以产生这样
+的值, 那也就是说这个图片的对这个pattern的匹配度是相当的高, 也就相当于你在 *原来
+图片的基础上对该pattern做了加强*.
+
+
+
+#+DOWNLOADED: /tmp/screenshot.png @ 2018-08-27 18:17:39
+[[file:CNN/screenshot_2018-08-27_18-17-39.png]]
+
+
+#+DOWNLOADED: /tmp/screenshot.png @ 2018-08-27 18:17:48
+[[file:CNN/screenshot_2018-08-27_18-17-48.png]]
+
+
+*Deep Style*
+
+1. 你想做转换的图片丢进 CNN 得到 filter 的 output(feature map, 代表这张 image 中
+   有什么样的 content)
+2. 呐喊那张图也丢进 CNN 得到 filter 的 output(feature map), 这个output我们考虑的
+   不是 filter output的"值", 而是考虑 filter 和 filter 的output 的协变关系
+   (correlation, 代表这张 image 的 style).
+3. 用同一个 CNN 找一张图片, 让这个图片的 filter output value 像第一步的图片, 让
+   这个图片的 filter 间的 output correlation 像第二步的图片.
+
+
+#+DOWNLOADED: /tmp/screenshot.png @ 2018-08-27 18:28:05
+[[file:CNN/screenshot_2018-08-27_18-28-05.png]]
+
+*More Application* (略)
+
+
+
+*什么时候我们应该使用 CNN*
+
+基本来说这个问题就是那三个观察:
+1. 某些pattern只是图片的很小 *一部分*.
+2. pattern会出现在图片的 *不同区域*.
+3. *降低解析度* 并 *不影响* pattern.
+
+以 alpha-go 为例, 围棋符合 特征(1)(2) 但不符合特征 (3), 你把棋盘做 subsampling
+只留下奇数列, 很显然原本的棋局的pattern被改变了.
+
+#+DOWNLOADED: /tmp/screenshot.png @ 2018-08-27 18:46:30
+[[file:CNN/screenshot_2018-08-27_18-46-30.png]]
+
+
+[[file:CNN/screenshot_2018-08-27_18-52-54.png]]
+
+ppt 中截取的是 alpha-go 的论文, 其中最令我感到吃惊的是 ~19*19*48~ 的棋盘. 原本应
+该是 ~19*19*3~ 的棋盘, ~3~ 表示图像的深度, 也就是每一位置的信息---~无子,黑棋,白
+棋~. 竟然 *图像深度* 也是可以根据具体应用来设置的. 李宏毅教授说, 这里的 ~48~ 加
+入了 ~是否叫吃~, ~是否死棋~ 等信息.
+
+*CNN用于文字处理*
+
+
+#+DOWNLOADED: /tmp/screenshot.png @ 2018-08-27 19:02:43
+[[file:CNN/screenshot_2018-08-27_19-02-43.png]]
+
+这也是一个非常棒而且颠覆我对CNN理解的例子: filter 不应该拘泥于局部的小正方形, 你
+完全可以做成 *上接天,下接地* 的形状, 只让他在横向上(对于 wordembedding 来说横向
+就是句子序列的方向.)移动, 这样也符合 *pattern小* *pattern出现在不同位置*
+*subsampling不改变pattern* 这三件条件.

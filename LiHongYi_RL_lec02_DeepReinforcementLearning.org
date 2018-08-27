@@ -1,0 +1,167 @@
+# -*- org-export-babel-evaluate: nil -*-
+#+PROPERTY: header-args :eval never-export
+#+PROPERTY: header-args:python :session Deep Reinforcement Learning
+#+PROPERTY: header-args:ipython :session Deep Reinforcement Learning
+#+HTML_HEAD: <link rel="stylesheet" type="text/css" href="/home/yiddi/git_repos/YIDDI_org_export_theme/theme/org-nav-theme_cache.css" >
+#+HTML_HEAD: <script src="https://hypothes.is/embed.js" async></script>
+#+HTML_HEAD: <script type="application/json" class="js-hypothesis-config">
+#+HTML_HEAD: <script src="https://cdn.mathjax.org/mathjax/latest/MathJax.js?config=TeX-AMS-MML_HTMLorMML"></script>
+#+OPTIONS: html-link-use-abs-url:nil html-postamble:nil html-preamble:t
+#+OPTIONS: H:3 num:t ^:nil _:nil tags:not-in-toc
+#+TITLE: Deep Reinforcement Learning
+#+AUTHOR: yiddishkop
+#+EMAIL: [[mailto:yiddishkop@163.com][yiddi's email]]
+#+TAGS: {PKGIMPT(i) DATAVIEW(v) DATAPREP(p) GRAPHBUILD(b) GRAPHCOMPT(c)} LINAGAPI(a) PROBAPI(b) MATHFORM(f) MLALGO(m)
+
+
+ /本课程是李宏毅 ML 部分最后一节课内容, 并非 DL 部分, 放在这里仅为补充./
+
+Agent 需要学会
+
+- *以退为进* : 牺牲短期小利, 获取长期大利.
+- *饮水思源* : 虽然 CS 中有 "开火" 会导致 "击杀", "击杀"导致"得分"($r^t$), 但"开
+  火"之前的"走位"非常重要.
+- *勇于探索* : 你永远不知道下一颗葡萄是否更甜, 如果不亲自尝一尝.
+
+但这三件事都非常困难.
+
+
+#+DOWNLOADED: /tmp/screenshot.png @ 2018-08-22 17:23:54
+[[file:screenshot_2018-08-22_17-23-54.png]]
+
+
+
+#+DOWNLOADED: /tmp/screenshot.png @ 2018-08-22 17:24:10
+[[file:screenshot_2018-08-22_17-24-10.png]]
+
+- Policy-based: 学出一个机器人;
+- Value-based: 学出一个评价者;
+- Model-based: 预测未来(蒙特卡洛算法), 棋类游戏适用, 未来下什么棋及其分数可以穷
+  举.
+
+
+
+#+DOWNLOADED: /tmp/screenshot.png @ 2018-08-22 17:29:37
+[[file:screenshot_2018-08-22_17-29-37.png]]
+
+依据 reward, 找到一个函数($\pi$), 这个函数输入是观察到的景象(observation), 输出
+是机器人的行动(action).
+
+
+#+DOWNLOADED: /tmp/screenshot.png @ 2018-08-24 20:50:07
+[[file:screenshot_2018-08-24_20-50-07.png]]
+
+#+DOWNLOADED: /tmp/screenshot.png @ 2018-08-22 17:40:37
+[[file:screenshot_2018-08-22_17-40-37.png]]
+
+为什么要用 NN 实现 Actor 呢.
+
+传统的 RL 的 Actor 是一个 table:
+
+| observation | action |
+|-------------+--------|
+| pict1       | up     |
+| pict2       | down   |
+| pict3       | fire   |
+| pict4       | left   |
+| pict5       | left   |
+| ....        | ...    |
+
+这种 table as Actor 是没法用在电玩中的, 因为电玩的 observation 是图像
+(combination of pixels) 你要穷举所有可能的 pix 的组合作为这张表的第一列, 这几乎
+不可能做到, 如果把 observation 看做 input, 把 action 看做 output, 那么这个 table
+就仅仅是一个函数(毫无疑问是非常复杂的函数)的输入和输出, 如果我们手上有这个函数也
+就不需要这个 table 了,怎么得到呢. NN 就是一个函数集啊, 我们可以把已有的 pair(
+observation, action) 看做 sample(data, label) 用来从函数集中挑出一个最拟合的函数.
+
+
+
+
+
+#+DOWNLOADED: /tmp/screenshot.png @ 2018-08-24 20:50:39
+[[file:screenshot_2018-08-24_20-50-39.png]]
+
+
+
+[[file:screenshot_2018-08-22_17-41-51.png]]
+
+
+#+DOWNLOADED: /tmp/screenshot.png @ 2018-08-22 17:48:13
+[[file:screenshot_2018-08-22_17-48-13.png]]
+
+*从 $R_{\theta}$ 到 $\overline{R_{\theta}}$*
+
+因为 $R_{\theta}$ 由两个东西来共同决定,
+1. Actor 所采取的策略 $\pi_{ \theta }$
+2. 游戏系统(environment).
+
+这两个都具有随机性, 所以 *$R_{\theta}$ 本质上就是一个 random value*.
+
+#+BEGIN_QUOTE
+想对 *random value* 进行衡量, 只能使用理想情况下的 *期望*, 或者更贴近现实的 *平
+均值*.
+#+END_QUOTE
+
+
+#+DOWNLOADED: /tmp/screenshot.png @ 2018-08-22 17:49:02
+[[file:screenshot_2018-08-22_17-49-02.png]]
+
+
+[[file:screenshot_2018-08-22_17-50-21.png]]
+
+三种平均/期望公式, 一定要记得:
+
+$$
+(1)\ \ \ \ E_{x\sim{p}}[f(x)]=\int_{x}{p(x)f(x)dx}
+$$
+
+$$
+(2)\ \ \ \ \overline{f(x)}=\sum_{all\ x}{p(x)f(x)}
+$$
+
+$$
+(3)\ \ \ \ \overline{f(x)}=\frac{1}{N}\sumf(x)
+$$
+
+
+
+
+#+BEGIN_EXAMPLE
+
+
+
+
+
+#+END_EXAMPLE
+
+
+
+
+
+
+#+DOWNLOADED: /tmp/screenshot.png @ 2018-08-22 17:50:46
+[[file:screenshot_2018-08-22_17-50-46.png]]
+
+
+#+DOWNLOADED: /tmp/screenshot.png @ 2018-08-22 17:51:22
+[[file:screenshot_2018-08-22_17-51-22.png]]
+
+
+
+#+DOWNLOADED: /tmp/screenshot.png @ 2018-08-22 17:51:47
+[[file:screenshot_2018-08-22_17-51-47.png]]
+
+
+
+#+DOWNLOADED: /tmp/screenshot.png @ 2018-08-22 17:55:49
+[[file:screenshot_2018-08-22_17-55-49.png]]
+
+#+BEGIN_QUOTE
+这里非常重要的地方是: 我们更新参数时考虑的累积分数而不是单步分数, 为什么. 之前说
+过 RL 下机器人必须要学会 *饮水思源*, 以 CS 为例, "开火" -> "击杀" -> "得分"(单步
+得分, $r^t$),如果针对这一步更新 $\theta$, 那么按照公式
+$R(\tau^n)\nablalogp(a_t^n|s_t^n, \theta)$, "开火" 的概率就不断提高,以至于 CS 一
+开局机器人就开始开火, 而且只会开火. 所以这里以 $R(\tau)$ 作为更新系数, 就是给一
+系列导致到分的动作加概率, *普惠* 性质的, 这一轮只要 $R(\tau)$ 是正值, *所有的动
+作* 都加概率.
+#+END_QUOTE

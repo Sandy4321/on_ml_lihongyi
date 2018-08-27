@@ -1,0 +1,414 @@
+# -*- org-export-babel-evaluate: nil -*-
+#+PROPERTY: header-args :eval never-export
+#+PROPERTY: header-args:python :session Q-Learning
+#+PROPERTY: header-args:ipython :session Q-Learning
+#+HTML_HEAD: <link rel="stylesheet" type="text/css" href="/home/yiddi/git_repos/YIDDI_org_export_theme/theme/org-nav-theme_cache.css" >
+#+HTML_HEAD: <script src="https://hypothes.is/embed.js" async></script>
+#+HTML_HEAD: <script type="application/json" class="js-hypothesis-config">
+#+HTML_HEAD: <script src="https://cdn.mathjax.org/mathjax/latest/MathJax.js?config=TeX-AMS-MML_HTMLorMML"></script>
+#+OPTIONS: html-link-use-abs-url:nil html-postamble:nil html-preamble:t
+#+OPTIONS: H:3 num:t ^:nil _:nil tags:not-in-toc
+#+TITLE: 李宏毅RL第4课: Q-Learning
+#+AUTHOR: yiddishkop
+#+EMAIL: [[mailto:yiddishkop@163.com][yiddi's email]]
+#+TAGS: {PKGIMPT(i) DATAVIEW(v) DATAPREP(p) GRAPHBUILD(b) GRAPHCOMPT(c)} LINAGAPI(a) PROBAPI(b) MATHFORM(f) MLALGO(m)
+
+
+总结:
+
+#+BEGIN_QUOTE
+policy based 方法本质上是要找出 *什么样的行动策略可以最大化得分* 并着眼于 *对单
+步行动的条件概率分布的直接调整---找到更好的分布参数* 来达此目的.
+
+具体说是 *根据本轮样本分数有多高调整本轮概率*: 通过假设策略是一个概率分布, 用NN
+的参数作为概率分布的参数, NN的输入是状态s, NN的输出是 action space 中每个action
+的概率值(整体看就是一个概率分布), 不同的NN参数就会输出不同的概率分布, 把表现
+(advantage function A)较好的action的概率分布设置为极限分布(其为1,其余为0)并作为
+单个样本 ~y_true~, 这样NN就会调整自己的参数让 action space 中对应该 action 的概
+率增加, 一句话概括就是 *增加分数较好的轮次内所有行动的概率*
+#+END_QUOTE
+
+#+BEGIN_QUOTE
+value based 方法本质上也是要找出 *什么样的行动策略可以最大化得分* 但着眼于 *寻找
+更精确(_TODO:此处存疑, 从算法中看似乎不是以此为目的训练 Q 网络的_)的得分预估函
+数---每一步行动都计算预估分数并选取其中预估份数最大的行动* 来达此目的.
+
+具体说是 *通过基于TDorMC的NN架构找到这个最精确的预估函数*: 通过假设分数预估函数
+是一个NN, NN的输入就是 pair(st,at), NN的输出就是 rt, 将下一个时间的
+pair(st+1,at+1)作为输入得到的输出作为 y_true, 来训练 NN 以期得到精确地预估函数.训
+练好以后使用 $\arg\max_{a}NN(st,a)$ 函数每次遇到 s 都做一次 argmax 求取最好的 a
+如此从头做到尾, 串起来看就形成了一个策略.
+#+END_QUOTE
+
+
+
+Q learning 是 value based 方法, 不像 PPO 和 policy gradient 他们学习的是一个策略,
+value based 方法学习的是一个 *critic(评价函数)*, *critic 并不直接行动,而是评价现
+在的行动*.
+
+$V^{\pi}(s)$ 表示当机器人采取 $\pi$ 策略遇到 $s$ 状态后, critic 直接预估到游戏 *
+结束时*, 这个机器人可以获得的分数. 虽然一个 critic 都是对某个状态 s 进行预估, 但
+是他必须和机器人 actor 一起做这个事情, 没法独自完成. critic 给出的评价值与两个东
+西有关: $\pi$ and $s$.
+
+
+
+#+DOWNLOADED: /tmp/screenshot.png @ 2018-08-25 17:46:17
+[[file:screenshot_2018-08-25_17-46-17.png]]
+
+
+#+DOWNLOADED: /tmp/screenshot.png @ 2018-08-25 17:47:45
+[[file:screenshot_2018-08-25_17-47-45.png]]
+
+第一种方法是以 Monte-Carlo 为基础( *MC based* ), 但是遇到这种电玩游戏的问题, 状
+态 s 实在太多, 所以可以把 $V^{\pi}$ model 成一个 NN 来做:
+- input of NN : state s;
+- output of NN : (根据当前状态s和策略pi预估到游戏结束时的) score;
+
+MC based 方法计算的是 *累积分数*, 也就是需要 *玩到结束.*
+
+每次 sa 对应的 Ga 可能都是不一样的, 换言之 Ga 的 *variance 较大*, 以为 Ga 是你sa
+之后一直到游戏结束的分数, 这个过程跨度这么大会经历这么多的 s 和 a, 所以每次收集
+到的 Ga 可能都不一样.
+
+
+#+DOWNLOADED: /tmp/screenshot.png @ 2018-08-25 17:59:11
+[[file:screenshot_2018-08-25_17-59-11.png]]
+
+第二种方法是 Temporal-difference 为基础( TD based )的方法,
+
+*TD based 方法不需要玩到结束.*, 他只收集相邻两个 $V^{\pi}(s)$ 的 *差值*
+(Temporal difference)
+
+[[file:screenshot_2018-08-25_18-23-24.png]]
+
+
+
+#+DOWNLOADED: /tmp/screenshot.png @ 2018-08-25 18:36:05
+[[file:screenshot_2018-08-25_18-36-05.png]]
+
+|          | MC                                  | TD                                                   |
+|----------+-------------------------------------+------------------------------------------------------|
+| 样本收集 | 每个样本(s,G)都需要彻底玩完一局游戏 | 每个样本 (st, st+1, rt) 只需相邻两个状态和中间的分数 |
+| 原理     | 基于(从当前到结束)累积分数的期望值  | 基于(从当前到下一状态)差值分数                       |
+| 实作     | min(V(st) - Gat)                    | min((V(st) - V(st+1)) - r)                           |
+| variance | 大                                  | 小                                                   |
+| bias     | 小                                  | 大                                                   |
+
+
+
+如下是说, 通过 MC 和 TD 方法得到的 value $V^{\pi}(s)$ 可能是很不一样的, 这没什么
+问题, 因为 MC 和 TD 方法本身就基于不同的假设.
+
+[[file:screenshot_2018-08-25_18-51-29.png]]
+
+*Another Critic --- 强制式critic*
+
+Q-function 与上面 value-based(TD和MC) 去估计的 V-function 不同的是他接受的输入是
+~(s,a)~, 而两个value-based方法接受的输入都仅仅是 ~(s)~.
+
+Q-function: $Q^{\pi}(s,a)$ 是说 *我们强制* 让机器人遇到 $s$ 时 *强制执行* 行动
+$a$ 之后都使用策略 $\pi$ *自由选择* 行动所可能获得的累积分数的期望值. 换言之, 我
+们只在机器人遇到 s 状态时 *强制* 他执行动作 a, 之后他会重新进入 *自由* 模式采用"
+他喜欢的" $\pi$ 自主行动.
+
+#+BEGIN_QUOTE
+Q-function: *强制* 第一步, *自由* 千百年.
+#+END_QUOTE
+
+
+#+DOWNLOADED: /tmp/screenshot.png @ 2018-08-25 19:35:29
+[[file:screenshot_2018-08-25_19-35-29.png]]
+
+
+#+DOWNLOADED: /tmp/screenshot.png @ 2018-08-25 19:42:01
+[[file:screenshot_2018-08-25_19-42-01.png]]
+
+
+
+虽然表面看起来, critic 只能够拿来评估一个 action 的好坏, 但实际上只要有了这个
+critic 我们就完全可以做 RL 了.只要有这个 Q-function 我们就可以决定采取哪个
+action 了.
+
+下面我们就要证明:
+#+BEGIN_QUOTE
+只要能学出某一个策略 $\pi$ 的Q函数, 就保证你可以找到一个新的更好的策略 $\pi^{'}$
+
+$\pi$ -> $Q$ -> $\pi^'$ -> $Q^'$ -> ...
+#+END_QUOTE
+
+*首先,我们需要定义什么是"更好的"策略*
+
+better: $V^{\pi^{'}}(s) \geq  V^{\pi}(s),\ for\ all\ state\ s$
+
+$$
+\pi^{'}(s) = \arg\max_a{Q^{\pi}(s,a)}
+$$
+
+解释下这个公式: 如果我们已经找到了 $\pi$ 的 Q 函数, 那么当机器人遇到状态 s 时,
+在所有可能的行动中能让 Q 函数最大的那个行动就是 $\pi^{'}$ 遇到相同状态 s 时所会
+采取的行动.
+
+#+BEGIN_QUOTE
+问题遗留: argmax 公式中如果 a 是离散的那很好解; 如果 a 是连续的就没法解决了.
+#+END_QUOTE
+
+
+#+DOWNLOADED: /tmp/screenshot.png @ 2018-08-25 21:03:50
+[[file:screenshot_2018-08-25_21-03-50.png]]
+
+
+首先要区别两个概念: $V^{\pi}(s)$ 和 $Q^{\pi}(s,a)$, 他们俩都表示累积分数
+
+#+BEGIN_EXAMPLE
+       策略函数,输入状态输出行动
+       |
+       v
+     V π (s)
+          ^
+          |
+          遇到 s 采用 π(s) 行动
+
+
+       第一步行动之后的策略函数, 输入状态输出行动
+       |
+       v
+     Q π (s,_)
+            ^
+            |
+            指定遇到 s 采取的行动
+#+END_EXAMPLE
+
+
+证明:
+$$
+if\ \pi^{'}(s) = \arg\max_a{Q^{\pi}(s,a)},\ then\ V^{\pi^{'}}(s) \geq  V^{\pi}(s),\ for\ all\ state\ s
+$$
+
+如果我们能证明这个公式, 那么就可以如下迭代以 *不断* 找到 *更好* 的 $\pi$.
+
+#+BEGIN_EXAMPLE
+                                                         ......
+                                                         ^
+                                                         |
+                                    π'' ----> Qπ'' ----> π''
+                                    ^
+                                    |
+                 π' ----> Qπ' ----> π'
+                 ^
+                 |
+π ----> Qπ ----> π
+#+END_EXAMPLE
+
+
+#+BEGIN_EXAMPLE
+Qπ(s, π'(s)) =
+                          如果遇到后面这些情况
+                          |
+                          v
+
+E[     rt   + Vπ(st+1)    |    st = s, at = π'(st)    ]
+       ----   --------         --      --
+       ^      ^                 ^       ^
+       |      |                 |       |
+       |      | 以及直到        |       |
+       |      | 结束获得的      |       |
+       |      | 累积分数        |       |
+       |                        |       |
+       | 会获得这一步的分数     |       | 遇到 s 并采取 π'(st) 行动
+       | (下图ppt写错了,不是    |
+       | rt+1, 而是rt)          | t 时刻遇到 s
+
+
+这边为什么要取期望值呢:
+因为每一次相同的 pair(s, a) 所获得的分数 rt 和下一步会跳到的状态 st+1 未必相同.
+#+END_EXAMPLE
+
+
+#+DOWNLOADED: /tmp/screenshot.png @ 2018-08-25 21:41:15
+[[file:screenshot_2018-08-25_21-41-15.png]]
+
+这个要证明的就是, 一旦你能找到某个策略函数的 Q 函数, 接下来就一定存在另外一个更
+好的策略函数.
+
+#+BEGIN_QUOTE
+Q 函数就像是美女的 *瑕疵*, 一旦你找到了这个美女的瑕疵, 你就一定能找到比她 *更美
+的美女*.
+
+- Q 函数 --- critic; 策略函数 --- policy.
+- Q 函数 --- 瑕疵;   策略函数 --- 美女.
+- Q 函数 --- 评价;   策略函数 --- 机器人.
+#+END_QUOTE
+
+我们的目标就是找到一个精确的分数预测函数Q他可以准确预测 $\pi$ (第1步行动指定为
+at,第2~END步行动由π(st)决定)最终可以得到的分数.
+
+*QLearning 中一定会用到的技巧*
+
+tip1: Target Network(类似 TD 的概念)
+
+
+[[file:screenshot_2018-08-26_22-03-59.png]]
+#+BEGIN_EXAMPLE
+                        两个都是 Q 共享相同的参数 如此该怎么训练呢.
+                        试想, 其中一个 Q 的参数被更新, 那么另一个Q
+                        的参数也更新, 那么 target 就跟着更新, 训练
+                        一个 y_true 一直在改变的 NN 非常困难.
+                .........................................
+                .                                       .
+                                                        .
+             +----+                                     .
+      st --> |    |                                     .
+             | Q  | ---- Qπ(st,at)                      .
+      at --> |    |          ^                          .
+             +----+          |                          .    this is target network
+                             | regression                   /
+                             |                        +----+
+                             v                        |    | <--- st+1
+                          rt + Qπ(st+1,π(st+1)) ----  | Q  |
+                          =====================       |    | <--- π(st+1)
+                          as target y_true            +----+
+#+END_EXAMPLE
+
+#+BEGIN_EXAMPLE
+               after err is small enough or exceeding the specified
+               number of iterations, update the "fixed" Q with "trained" Q
+               Then, go on training like before until good enough.
+
+               ........>..............>.............>....
+               .                                        .
+               ^                                        v
+               .                                        .
+               .                                        .
+             +----+      as predict y_pred              .
+      st --> |    |      =========                      .
+             | Q  | ---- Qπ(st,at)                      .
+      at --> |    |          ^                          .
+             +----+          |                          .
+               ^             | regression               .
+               |             |                        +----+
+               |             v                        |    | <--- st+1
+               |          rt + Qπ(st+1,π(st+1)) ----  | Q  |
+               |          =====================       |    | <--- π(st+1)
+               |          as target y_true            +----+
+               |                      ^                 ^
+               |                      |                 |
+               |                      |                 |
+               |                      |                 |
+                                 then y_true will
+                                 also fixed
+         ONLY train this                             Fix this parameter
+         ===============                             ==================
+#+END_EXAMPLE
+
+为什么 target network 使用 $\pi(s_{ t+1 })$ 作为输入而不是 $a_{ t+1 }$
+
+因为教授这里的意思应该是下面这样:
+
+#+BEGIN_EXAMPLE
+             +----+
+      st --> |    |
+             | Q  | ---- Qπ(st,at)
+      at --> |    |          ^
+             +----+          |
+                             | regression
+                             |
+                             |                    +--- 取最大的Q值
+                             |                    ^
+                             |
+                             |                    \   +----+
+                             v                     \  |    | <--- st+1
+                          rt + Qπ(st+1, a*)  --<----  | Q  |
+                               ============        /  |    |  /a1
+                                                  /   +----+ <-- a2
+                                                              \...
+
+                                                              v
+                                                              +-- 每一种action space中的行动
+                                                              都通过QNetWork的到一个对应的Q值
+#+END_EXAMPLE
+
+
+这种架构和训练方式就叫做 *target network*
+
+
+tip2: exploration
+
+*$\epsilon$ greedy*
+
+$\epsilon$ 是 *采取最大化Q函数的行动* 和 *随机行动* 之间的一个权衡, $\epsilon$
+越大越倾向随机探索.为什么 $\epsilon$ 需要随着时间递减, 因为一开始的时候还没有探
+索过很多 pair:(st,at), 所以我们希望 exploration 越多越好, 多多探索才能搜集更多
+pair.
+
+
+#+DOWNLOADED: /tmp/screenshot.png @ 2018-08-26 18:06:22
+[[file:screenshot_2018-08-26_18-06-22.png]]
+
+[[file:screenshot_2018-08-25_22-41-52.png]]
+
+
+*Boltzmann Exploration*
+
+类似 policy gradient. 根据 Q value 来定义一个分布: Q value 有正有负, 所以先做
+exponential 然后做 normalization.
+
+$$
+P(a|s) = \frac{exp(Q(s,a))}{\sum_a{exp(Q(s,a))}}
+$$
+
+
+tip3: replay buffer
+
+#+caption: replay buffer
+| st  | at  | rt  | st+1 |
+|-----+-----+-----+------|
+| s1  | a1  | r1  | s2   |
+| s2  | a2  | r2  | s3   |
+| s3  | a3  | r3  | s4   |
+| ... | ... | ... | ...  |
+
+buffer 类似一个缓存数据结构, 其中可以存放形如上面表格所展示的样本, 如果你的
+buffer 中可以放 5w 笔data, 通常情况下机器人使用 *当前* 的 $\pi$ 与环境互动可能只
+产生了 1w 笔data, 然后做 QLearning 的时候我们是随机的从 buffer 中 sample batch
+of data points 做 $\pi$ 的更新. 所以, 这样看起来 buffer 的风险是, 我们每次用来通
+过 QLearning 更新 $\pi$ 的样本可能并不是 *当前* $\pi$ 产生的, 还有 *过去* 的
+$\pi$ 产生的样本. 李宏毅老师说这其实没什么问题(并没有给出具体解释).
+
+除此之外还有两个个好处,
+1. *省时*: RL 中最耗时的是与环境互动, 而采用 replay buffer 可以很大程 度上减少与环
+   境互动的时间.
+2. *off-line*: 你完全不需要 +训练更新收集,训练更新收集,...+ , 完全可以收集很多之
+   后进行训练.
+
+
+#+DOWNLOADED: /tmp/screenshot.png @ 2018-08-25 22:52:33
+[[file:screenshot_2018-08-25_22-52-33.png]]
+
+
+#+DOWNLOADED: /tmp/screenshot.png @ 2018-08-25 22:59:09
+[[file:screenshot_2018-08-25_22-59-09.png]]
+
+更重要的好处是:你借由 buffer 可以让 QLearning 实现 off-policy. 因为 buffer 中存
+放的不仅仅是当前待更新的 $\pi$ 与环境互动得到 ~(st,at,rt,st+1)~ ,还包括久远以前
+的 $\pi$, 这样本质上看起来就是在用 *其他* 的 $\pi$ 来更新 *当前* 的 $\pi$ 这就是
+在做 *off-policy*.
+
+
+#+DOWNLOADED: /tmp/screenshot.png @ 2018-08-26 00:56:28
+[[file:screenshot_2018-08-26_00-56-28.png]]
+
+1. 注意上图中的 ~(st, at, rt, st+1)~ 是你用 old π(with epsilon greedy) 与环境互
+   动 之后收集并放入 replay buffer 中的 data; ~(si, ai, ri, si+1)~ 是你从全部
+   replay buffer 中重新抽样获得的 data, 两者不需要是同一笔, 可以查看之前的分析.
+2. 注意上图中的 $\hat{Q}$ 就是被固定住的 target network 中的 "Q" 的 NN.
+3. TODO: 上图中 *Target y = ri + max Qhat(si+1,a)* 中的说法很显然与下图所讲述的
+   Q NN 的训练方法不同.
+   [[file:screenshot_2018-08-26_22-03-59.png]]
+
+   1. 问: $\pi(s_{t+1}) = \arg\max_a{\hat{Q}(s_t,a)}$ 么.
+
+   2. 答: 我觉得是. 但这样一样, Q 网络的训练目标就不是 *更精确*, 也就不是像原始 TD 那种训练目标了.
+
+
+这里有一个更清晰的版本(和更清晰的解释)

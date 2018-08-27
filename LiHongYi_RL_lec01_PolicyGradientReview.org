@@ -1,0 +1,250 @@
+# -*- org-export-babel-evaluate: nil -*-
+#+PROPERTY: header-args :eval never-export
+#+PROPERTY: header-args:python :session Proximal Policy Optimization(PPO)
+#+PROPERTY: header-args:ipython :session Proximal Policy Optimization(PPO)
+#+HTML_HEAD: <link rel="stylesheet" type="text/css" href="/home/yiddi/git_repos/YIDDI_org_export_theme/theme/org-nav-theme_cache.css" >
+#+HTML_HEAD: <script src="https://hypothes.is/embed.js" async></script>
+#+HTML_HEAD: <script type="application/json" class="js-hypothesis-config">
+#+HTML_HEAD: <script src="https://cdn.mathjax.org/mathjax/latest/MathJax.js?config=TeX-AMS-MML_HTMLorMML"></script>
+#+OPTIONS: html-link-use-abs-url:nil html-postamble:nil html-preamble:t
+#+OPTIONS: H:3 num:t ^:nil _:nil tags:not-in-toc
+#+TITLE: RL-lec01: Policy Gradient Review
+#+AUTHOR: yiddishkop
+#+EMAIL: [[mailto:yiddishkop@163.com][yiddi's email]]
+#+TAGS: {PKGIMPT(i) DATAVIEW(v) DATAPREP(p) GRAPHBUILD(b) GRAPHCOMPT(c)} LINAGAPI(a) PROBAPI(b) MATHFORM(f) MLALGO(m)
+
+policy based 方法很有意思:
+1. 是我第一次见到对 *随机现象* 作为优化目标: R.
+2. 虽然有两个 *分布参数* 同时对随机现象施加影响, 但依然可以只对一个源头进行优化.
+
+
+[[file:screenshot_2018-08-22_05-37-35.png]]
+
+
+* Policy Gradient
+
+#+DOWNLOADED: /tmp/screenshot.png @ 2018-08-22 05:42:58
+[[file:Policy Gradient/screenshot_2018-08-22_05-42-58.png]]
+
+Policy of Actor: 给定一个外界的输入, 他会输出 Actor 要执行的行为.
+
+
+
+[[file:Policy Gradient/screenshot_2018-08-22_05-55-27.png]]
+
+Actor 是如何跟环境互动的呢.
+
+- s1: 第一次观察
+- a1: 观察之后的第一次行动
+- r1: 行动之后第一次得分.
+- episode: 一场游戏(从开始到结束)的过程.
+- trajectory, $\tau$: 把一场游戏中 *环境输出的观察景象* 和 *机器人输出的行为* 全
+  部串起来 叫做一个trajectory(轨迹, $\tau=\{a_1, s_1, a_2, s_2, ... , a_T\}$),
+  trajectory 最终肯定以 $s_{T+1}$ 结束(表示 gameover), 不会再有 $a_{T+1}$
+- $p_{\theta}(\tau)$: 假设 Actor 的参数 $\theta$ 给定了, 每一个轨迹都可以计算其发生的概率.
+  - Actor 只根据 *当前* 观察景象产生行动: $P_{\theta}(a_n|s_n)$
+  - Env   只根据 *前一时刻* 行动和 *前一时刻* 观察产生观察景象产生行动: $P_{\theta}(s_n|s_{n-1}, a_{n-1})$
+- $\theta$: 不同的 Actor 参数就会有不同的轨迹概率 ($P_{\tau}$)和轨迹($\tau$).
+- reward, $r$: (当前景象, 当前行动) => 当前分数; $f(s_t,a_t) = r_t$
+- $R(\tau)$ : 一场游戏的分数, 调整 $\theta$ 使得 $R(\tau)$ 越大越好. 是个随机值,
+  因为 sn 和 an 的产生都是抽样的结果, 你只能够把期望 $\bar{R}_{\theta}$ 作为衡量
+  $\theta$ 好坏的的根据, 而不能是某一轮的 R
+- $\bar{R}_{\theta}$: 对于某个固定的 $\theta$, 虽然在其作用下
+  $P_{\theta}(a_n|s_n)$ (注意, $P_{\theta}(s_n|s_{n-1}, a_{n-1})$ 由游戏机也就是
+  enviroment 决定不是由机器人的策略决定的)都是确定的, 但"抽样结果"(sn, an 都是抽
+  样的结果)并不确定, (sn,an) 不确定也就是 $\tau$ 不确定, 所以你要 *穷举* 在
+  $\theta$ 作用下所有可能的 $\tau$, 计算这些 $\tau$ 产生的分数$R(\tau)$的期望.
+
+  $$\bar{R}_{\theta} = \sum_{\tau}{R(\tau)p_{\theta}({\tau})}$$
+  #+BEGIN_EXAMPLE
+
+   env
+       .
+        .
+         v
+         Pe
+           .
+            .>.
+       Pθ .....> τ ----> Rτ \
+       ^ .  ..> τ -----> Rτ  |
+      .   .                  | -> Rθ = Eτ~pθ[R(τ)]
+     .     v                 |
+    θ ----> τ ---------> Rτ /
+    |                    |
+    |                    |
+  本质(驱动力)        一系列现象(也许每个 R 都不相同)
+    1         :          n
+
+通过平均随机现象来衡量并优化本质.
+
+  #+END_EXAMPLE
+- policy gradient: 使用 gradient ascent 来最大化 $\bar{R}_\theta$
+
+*游戏是否结束是由 enviroment 决定的*
+
+*Actor 存在的目标就是想办法最大化自己的分数*
+
+[[file:Policy Gradient/screenshot_2018-08-22_06-00-15.png]]
+
+
+#+DOWNLOADED: /tmp/screenshot.png @ 2018-08-22 06:23:38
+[[file:Policy Gradient/screenshot_2018-08-22_06-23-38.png]]
+
+
+[[file:Policy Gradient/screenshot_2018-08-22_06-26-03.png]]
+
+
+
+#+DOWNLOADED: /tmp/screenshot.png @ 2018-08-22 07:22:47
+[[file:Policy Gradient/screenshot_2018-08-22_07-22-47.png]]
+
+[[file:Policy Gradient/screenshot_2018-08-22_07-22-29.png]]
+
+
+
+#+DOWNLOADED: /tmp/screenshot.png @ 2018-08-22 08:04:46
+[[file:Policy Gradient/screenshot_2018-08-22_08-04-46.png]]
+
+
+
+#+DOWNLOADED: /tmp/screenshot.png @ 2018-08-22 08:08:52
+[[file:Policy Gradient/screenshot_2018-08-22_08-08-52.png]]
+
+
+
+#+DOWNLOADED: /tmp/screenshot.png @ 2018-08-22 08:26:35
+[[file:Policy Gradient/screenshot_2018-08-22_08-26-35.png]]
+
+
+实作的时候, 你就用你的某个 $\theta$ 加持下的机器人去与环境互动 N 轮, 并记录每轮
+(第n轮)互动过程中每一次(第t次)看到的如下内容:
+1. 景象($s_t^n$)和对应的行动($a_t^n$),
+2. 本轮结束时的分数 $R(\tau^{n})$.
+
+| 轮次 | 景象,行动     | 本轮分数 |
+|------+---------------+----------|
+| n=1  |               |          |
+|      | t=1, (s1,a1)  |          |
+|      | t=2, (s2,a2)  |          |
+|      | t=3, (s3,a3)  |          |
+|      | t=4, (s4,a4)  |          |
+|      | ..., ...      |          |
+|      | t=T, (sT,aT)  | R1       |
+|------+---------------+----------|
+| n=2  |               |          |
+|      | t=1,  (s1,a1) |          |
+|      | t=2,  (s2,a2) |          |
+|      | t=3,  (s3,a3) |          |
+|      | t=4,  (s4,a4) |          |
+|      | ...,  ...     |          |
+|      | t=T,  (sT,aT) | R2       |
+|------+---------------+----------|
+| n=3  |               |          |
+|      | t=1,  (s1,a1) |          |
+|      | t=2,  (s2,a2) |          |
+|      | t=3,  (s3,a3) |          |
+|      | t=4,  (s4,a4) |          |
+|      | ...,  ...     |          |
+|      | t=T,  (sT,aT) | R3       |
+|------+---------------+----------|
+| ...  | ...           | ...      |
+
+这样过了 N 轮(自己指定N为多少)之后可以更新 *一次* 参数 $\theta$, 然后用更新后的
+$\theta_{new}$ 再去与环境互动并记录... 如此往复.
+
+#+BEGIN_QUOTE
+这里的问题是, 你每一次互动(N轮)所记录的内容(pairs and reward)不能重复利用, 更新
+效率较低. 之后会有算法改进这个问题.
+#+END_QUOTE
+
+
+#+DOWNLOADED: /tmp/screenshot.png @ 2018-08-22 20:54:31
+[[file:Policy Gradient/screenshot_2018-08-22_20-54-31.png]]
+
+使用 NN 该如何训练.
+1. NN 的设计, 应根据具体场景斟酌, 比如这里输入的是一张图片, 那么为了更好的学出函
+   数, 应该使用 CNN.
+2. 因为更新的形式虽然是
+   $$\theta \leftarrow \theta + \eta\nabla\bar{R}_n$$
+   但本质上是
+   $$\theta \leftarrow \theta + \eta\frac{1}{N}\sum_n^N\sum_t^{T_n}R({\tau^n})\nabla{log p_{\theta}(a_t^n|s_t^n) }$$
+
+   其中 $p_{\theta}(a_t^n|s_t^n)$ 可以理解为 $NNet_{\theta}(s_t^n)$, 之后 $log
+   p_{\theta}(a_t^n|s_t^n)$ 可以看成$1\cdot{log
+   p_{\theta}(a_t^n|s_t^n)}+0\cdot{p_{\theta}}+0\cdot{p_{\theta}}+\cdots$ 这是一
+   个 *cross-entropy*, 是 $NNet_{\theta}(s_t^n)$ 和收集到的 (st,at) pair 中的 at
+   概率为1 其余所有种类的动作概率为 0 构成的分布的交叉熵.
+
+   我们训练 NN 在 at 发生的这一轮动作得到 R 为正时, 增加他的概率, 反之亦然. 也就
+   是说 $\theta$ 的更新方向完全由 $R(\tau^n)$ 决定, 而更新大小由 $R(\tau^n)$ 和
+   $\nabla{log p_{\theta}(a_t^n|s_t^n) }$ 共同决定.
+
+   当某论分数 R>0 时, 对于 pair (st, at), 我当然希望我训练的网络把这个 pair 的概
+   率加高, 就朝着 $p_{\theta}(a_t|s_t)=1$ 的方向取增加.
+
+经过上面的分析,我们就可以这样训练网络, 就是训练一个以 cross-entropy 为 loss 的分
+类网络, 这个网络的输入是 st, label 是 at=1 其余全都是0, 每个样本的 loss 都需要乘
+以 $R(\tau^n)$, 这样一直训练下去.
+
+
+Some tips when implement RL.
+
+*tip1: add a baseline*
+
+    如果所有分数都是正的, 根据公式每个 pair (s,a) 都会增加, 如果我们手上有 *全
+    部* pair, 分数都是正的不会造成什么影响, 因为可以让 R 大的 pair 概率增加的多,R小
+    的 pair 概率增加的少就可以了, 但是 *概率和始终为1* ,那些增幅少的自然会下降.
+    但是,我们是用 sample 来模拟求期望这件事, 有可能某个 pair (s,a) 你一直没有
+    sample到, 而其他被 sample 到的在参与"分赃", 那么本该属于他的概率增幅就被其他
+    的 pair 挤占了, 这个 pair 的概率就 *被迫* 下降了. *baseline* 可以用于纠正此
+    类问题.
+
+#+DOWNLOADED: /tmp/screenshot.png @ 2018-08-22 21:09:13
+[[file:Policy Gradient/screenshot_2018-08-22_21-09-13.png]]
+
+
+变成:
+
+
+#+DOWNLOADED: /tmp/screenshot.png @ 2018-08-22 21:10:22
+[[file:Policy Gradient/screenshot_2018-08-22_21-10-22.png]]
+
+
+
+#+DOWNLOADED: /tmp/screenshot.png @ 2018-08-22 21:10:37
+[[file:Policy Gradient/screenshot_2018-08-22_21-10-37.png]]
+
+
+*tip2: Assign Suitable Credit*
+
+之前说过, 为了让机器人学会 *饮水思源* ,我们采取了一种 *普惠* 性质的措施: 但凡本
+轮游戏 R 分数增加了, 就给本轮游戏所有的 pair (s,a) 都增加概率.但这显然是一个 *不
+公平* 的举措. 虽然你的移动和走位帮助你开火并击杀, 但是本轮游戏你肯定不止做了这些
+动作, *可能你还犯了很多错误*, 而这些错误 pair (s,a) 的概率也被增加了.
+
+所以, 我们希望 *给不同的 pair 不同的权重(修改 $R(\tau^n)-b$ 部分)*, 他能正确的反
+应每个 *pair 的真实价值*. 理想情况下, 如果你能记录更多更多更多的 pair (s,a) 那些
+不好的 pair 还是会被发现. 但实际情况, 我们记录的可能只是全部可能的很小一部分. 那
+该怎么办.
+
+我们可以注意到, 在某个 pair (st,at) 发生之前所累积的分数其实跟这个 pair 是没有任
+何关系的, 换言之, *某个 pair 的真正价值体现在他发生之后*. 而且 *他的价值随时间递
+减*. 如此用 *从该 pair 发生直到本轮结束累积的分数* 乘以 *随时间推移递减* 的系数,
+代替整轮分数.
+
+换言之, 这依然是一个 *普惠* 性质的措施, 但是更 *兼顾公平* --- *递减的惠及后代,
+并不惠及祖上*.
+
+#+BEGIN_QUOTE
+这里的 b 与 baseline 的处理方式不同, 他通常是一个 NN 的output, 之后会讲.
+#+END_QUOTE
+
+新的权重(包括 "-b")通常称为 *advantage function* $A^{\theta}(s_t, a_t)$
+
+这个 A 也可以是一个 NN 的 output, 他是一个 "critic"
+
+- policy based: policy gradient
+- value based: critic
+
+#+DOWNLOADED: /tmp/screenshot.png @ 2018-08-22 21:35:15
+[[file:Policy Gradient/screenshot_2018-08-22_21-35-15.png]]

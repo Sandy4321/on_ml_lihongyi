@@ -1,0 +1,206 @@
+# -*- org-export-babel-evaluate: nil -*-
+#+PROPERTY: header-args :eval never-export
+#+PROPERTY: header-args:python :session 李宏毅RL第5课: Various Advanced DQN
+#+PROPERTY: header-args:ipython :session 李宏毅RL第5课: Various Advanced DQN
+#+HTML_HEAD: <link rel="stylesheet" type="text/css" href="/home/yiddi/git_repos/YIDDI_org_export_theme/theme/org-nav-theme_cache.css" >
+#+HTML_HEAD: <script src="https://hypothes.is/embed.js" async></script>
+#+HTML_HEAD: <script type="application/json" class="js-hypothesis-config">
+#+HTML_HEAD: <script src="https://cdn.mathjax.org/mathjax/latest/MathJax.js?config=TeX-AMS-MML_HTMLorMML"></script>
+#+OPTIONS: html-link-use-abs-url:nil html-postamble:nil html-preamble:t
+#+OPTIONS: H:3 num:t ^:nil _:nil tags:not-in-toc
+#+TITLE: 李宏毅RL第5课: Various Advanced DQN
+#+AUTHOR: yiddishkop
+#+EMAIL: [[mailto:yiddishkop@163.com][yiddi's email]]
+#+TAGS: {PKGIMPT(i) DATAVIEW(v) DATAPREP(p) GRAPHBUILD(b) GRAPHCOMPT(c)} LINAGAPI(a) PROBAPI(b) MATHFORM(f) MLALGO(m)
+
+
+*DQN 的缺陷*
+
+DQN 得到的 Q-value 往往是被 *高估* 的. Double DQN 可以让预测值和真实值很 *接近*.
+
+#+DOWNLOADED: /tmp/screenshot.png @ 2018-08-26 14:03:29
+[[file:screenshot_2018-08-26_14-03-29.png]]
+
+
+*为什么 DQN 的 Q 值总是被高估呢*
+
+TODO: 这里没听懂.因为必经是 NN 他只是取拟合,不代表没有误差,如果恰好"误差"就是"高
+估",那么高估的值就会被当做 max 那项的值.
+
+
+*Double DQN*
+
+[[file:screenshot_2018-08-26_22-56-33.png]]
+
+*Double DQN 只做了一项改动就是 _增加了一个 Q Network_ *.
+
+对于 Double DQN, 算Q值的Q函数与负责选择行动的Q函数
+
+#+BEGIN_EXAMPLE
+DQN: only Q
+
+Q(st,at) <-----------> rt + max[Q(st+1, a)]
+
+
+Double DQN: Q and Q'
+
+Q(st,at) <-----------> rt + Q'[st+1, argmax[Q(st+1, a)]]
+                                     ------------------
+                                     哪一个 a 能产生最大的 Q 值,
+                                     就用那个 a 去产生 Q' 值.
+#+END_EXAMPLE
+
+为什么两个Q函数的这种组合可以避免 *总是高估* 的问题呢:
+
+1. 如果 Q 函数高估了某个行动的值(并选择他), 不要紧, 只要 Q' 函数能给他一个合理的值即可.
+2. 如果 Q' 函数高估了某个行动的值, 不要紧, 只要 Q 函数没有选择这个行动即可.
+
+
+- Q 函数只能 *提案*
+- Q' 函数只能 *执行*
+
+
+*哪里有两个 Q 呢*, 就是你更新参数的 Q 和 固定不懂的Q, 你用固定不懂的Q作为Q'负责
+ *执行* 计算, 用一直更新参数的Q作为Q去负责 *提案* 选择a.
+
+原来的 DQN:
+#+BEGIN_EXAMPLE
+             +----+
+      st --> |    |
+             | Q  | ---- Qπ(st,at)
+      at --> |    |          ^
+             +----+          |
+                             | regression
+                             |
+                             |                    +--- 取最大的Q值
+                             |                    ^
+                             |
+                             |                    \   +----+
+                             v                     \  |    | <--- st+1
+                          rt + Qπ(st+1, a*)  --<----  | Q  |
+                               ============        /  |    |  /a1
+                                                  /   +----+ <-- a2
+                                                              \...
+
+                                                              v
+                                                              +-- 每一种action space中的行动
+                                                              都通过QNetWork的到一个对应的Q值
+#+END_EXAMPLE
+
+变成现在这样:
+#+BEGIN_EXAMPLE
+             +----+
+      st --> |    |
+             | Q  | ---- Qπ(st,at)
+      at --> |    |          ^
+             +----+          |
+                             | regression
+                             |
+                             |
+                             |                        +----+
+                             v                        |    | <--- st+1
+                          rt + Qπ(st+1, a*)  --<----  | Q' |
+                               ============           |    |  a*   +----+    /a1
+                                                      +----+ ----- | Q  | --<-- a2
+                                                                   |    |    \...
+                                                                   +----+
+#+END_EXAMPLE
+
+
+*Dueling DQN*
+
+*Dueling DQN 只做了一项改动就是 _改了 Q Network 的架构_ *.
+
+变成现在这样:
+#+BEGIN_EXAMPLE
+                new Q
+             /----------\
+                          +---- V(s)
+             +----+  +--+/
+             |    |  |  | -- 1.0   -----+    new Q(s,a)
+      st --> |    |  +--+               +->   3.0
+             |    |  +--+ -- 2.0        |    -1.0
+             |    |  |  | -- -2.0  -----+     1.0
+             +----+  +--+ -- 0
+                    /
+                   /                           | regression
+               A(s,a)                          |
+                                               |
+                                               |                              change to new Q
+                                               |                             /
+                                               |                    \   +----+
+                                               v                     \  |new | <--- st+1
+                                            rt + Qπ(st+1, a*)  --<----  | Q  |
+                                                 ============        /  |    |  /a1
+                                                                    /   +----+ <-- a2
+                                                                                \...
+
+#+END_EXAMPLE
+
+Dueling DQN 所有的核心技术都在 ~V(s)~ 上,
+
+#+BEGIN_EXAMPLE
+对于下面这样一个表, 他的单元格就是 Q(s,a)
+- 行为 action
+- 列
+            +--- 每一列都是新的Q NN架构的输出(某个st, 所有action的Q值)
+            v
+|    |s1 | s2 |s3 |s4 |
+|----+---+----+---+---|
+| a1 | 3 |  3 | 3 | 1 |
+| a2 | 1 | -1 | 6 | 1 |
+| a3 | 2 | -2*| 3 | 1 | <= 如果这一行的 ~-2~ 没有被 sample 到
+                           由于 V(s) 会更新给列内每个值, 所以
+                           最后他也会被更新(类似于 policy gradient)
+                           中的 base line 方法的作用.
+
+V(s) |2  | 1  | 4 | 1 | <= 剩下的问题就是我们应该多设置一些限制
+                           让 Q NN 更偏向于通过 V(s) 而不是 A(s,a)
+                           来解决问题.
+
+A(s,a)
+     | 1 |  3 |-1 | 0 | <= 设置constraint: 每一列的和必须为0
+     |-1 | -1 | 2 | 0 |
+     | 0 | -2 |-1 | 0 |
+#+END_EXAMPLE
+
+#+DOWNLOADED: /tmp/screenshot.png @ 2018-08-26 23:25:42
+[[file:screenshot_2018-08-26_23-25-42.png]]
+
+
+实作时该怎么做呢.
+
+
+Q NN 的输出 A(s,a) 先做 *normalization*, 而且这个归一化的操作必须是 A(s,a) 的一
+部分, 他只是一个 operation. 以这种方式来给 A(s,a) 整个小网络一个 *列和必须为0*
+的限制.
+
+
+#+DOWNLOADED: /tmp/screenshot.png @ 2018-08-26 23:28:18
+[[file:screenshot_2018-08-26_23-28-18.png]]
+
+Noisy Net (略) (openAI 和 DeepMind 同时发表论文)
+
+用 ~add noise on parameter~ 改进原来我们做 exploration 的方法 ~epsilon
+greedy(add noise on action)~. 以此保证我们在同样的 state 时可以采取同样的
+action, 但又能保证充分的 exploration; 而原来的 epsilon greedy 中我们完全无法保证
+*相同的 state 会产生相同的 action*
+
+#+DOWNLOADED: /tmp/screenshot.png @ 2018-08-26 23:33:24
+[[file:screenshot_2018-08-26_23-33-24.png]]
+
+
+#+DOWNLOADED: /tmp/screenshot.png @ 2018-08-26 23:36:12
+[[file:screenshot_2018-08-26_23-36-12.png]]
+
+
+
+
+#+DOWNLOADED: /tmp/screenshot.png @ 2018-08-26 23:37:53
+[[file:screenshot_2018-08-26_23-37-53.png]]
+
+Prioritized Replay (略)
+
+Multi-step (略)
+
+Distributional Q-function (略)

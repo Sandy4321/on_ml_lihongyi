@@ -1,0 +1,313 @@
+# -*- org-export-babel-evaluate: nil -*-
+#+PROPERTY: header-args :eval never-export
+#+PROPERTY: header-args:python :session From on-policy to off-policy
+#+PROPERTY: header-args:ipython :session From on-policy to off-policy
+#+HTML_HEAD: <link rel="stylesheet" type="text/css" href="/home/yiddi/git_repos/YIDDI_org_export_theme/theme/org-nav-theme_cache.css" >
+#+HTML_HEAD: <script src="https://hypothes.is/embed.js" async></script>
+#+HTML_HEAD: <script type="application/json" class="js-hypothesis-config">
+#+HTML_HEAD: <script src="https://cdn.mathjax.org/mathjax/latest/MathJax.js?config=TeX-AMS-MML_HTMLorMML"></script>
+#+OPTIONS: html-link-use-abs-url:nil html-postamble:nil html-preamble:t
+#+OPTIONS: H:3 num:t ^:nil _:nil tags:not-in-toc
+#+TITLE: From on-policy to off-policy
+#+AUTHOR: yiddishkop
+#+EMAIL: [[mailto:yiddishkop@163.com][yiddi's email]]
+#+TAGS: {PKGIMPT(i) DATAVIEW(v) DATAPREP(p) GRAPHBUILD(b) GRAPHCOMPT(c)} LINAGAPI(a) PROBAPI(b) MATHFORM(f) MLALGO(m)
+
+PPO, policy gradient 的进阶版
+
+- on policy: 一边互动一边学习, 进行学习的机器人和与环境互动的机器人是同一个.
+- off policy: 看别人学习之后自己与环境互动, 进行学习的机器人和与环境互动的机器人
+  是同一个.
+
+[[file:screenshot_2018-08-22_21-43-13.png]]
+
+policy gradient 是 on-policy, 因为你是"*互动多轮取样更新, 互动多轮取样更新*".
+
+如果能把 $\theta^'$ 跟环境互动得到的样本用作更新 $\theta$ 的话, 那么 $\theta$ 就
+不需要 *互动->停->更新->互动->停...*, 就让 $\theta^'$ 与环境互动获取大量样本, 然
+后 $\theta$ 每次取一部分用于自我更新, 再取一部分用于自我更新, 为什么可以反复使用
+$\theta^'$ 的样本呢. 因为既然你要做 off-policy 的, 不论 $\theta$ 怎么更新你始终
+都是要用 $\theta^'$ 的样本.
+
+
+*Importance Sampling*
+
+如果我们 *只能从 q 中抽样* , 但我们需要用 *p 的期望*, 怎么办. *Important
+Sampling*. 他的核心技能就是 *用一个分布的期望(加一个修正项), 代替另一个分布的期
+望.*.
+
+#+DOWNLOADED: /tmp/screenshot.png @ 2018-08-24 09:00:49
+[[file:screenshot_2018-08-24_09-00-49.png]]
+
+
+*期望一样, 不代表变异一样*
+#+DOWNLOADED: /tmp/screenshot.png @ 2018-08-24 09:23:16
+[[file:screenshot_2018-08-24_09-23-16.png]]
+
+*Issue of Important Sampling when apply on off-policy*
+
+Important Sampling 本身没什么问题, 可以完美的处理 *一个分布的期望代替另一个分布
+的期望* 这件事, 但问题是 *在 RL 中我们只能用 average 代替 expectation*
+
+$$E_{x\sim{p}}[f(x)] = E_{x\sim{q}}[f(x)\frac{p(x)}{q(x)}]$$
+$$\sum_{ x\sim{ p } }{ f(x) }\ \textcolor{red}{ \overset{?}{=} } \sum_{ x\sim{q} }{ f(x)\frac{p(x)}{q(x)} }$$
+
+对于 *用均值来近似期望* 这件事, 如果这两种 sample: $x\sim{p}$, $x\sim{q}$足够多
+还好, 如果 sample 的不够多, 因为他们 Variance 是非常不一样的, 这样就会造成很大差
+别. 换言之 *如果样本不多, 以 Important Sampling 为基础的 off-policy 误差很大*.
+
+
+这一点可以通过求 Important Sampling 公式两边的 Variance 来看出, 从上图中可以看到,
+Important Sampling 公式为:
+
+$$E_{x\sim{p}}[f(x)] = E_{x\sim{q}}[f(x)\frac{p(x)}{q(x)}]$$
+
+对 Important Sampling 公式等号两边( ~f(x)~ 和 ~f(x)p(x)/q(x)~)分别求变异结果如下,
+可以看出 *等号两边的变异数* 刨去减号后面的部分是一致的, 减号前面的部分相差了一个
+$\frac{p(x)}{q(x)}$, 也就是说 *如果两个分布差异越大, Important Sampling 越不成立,
+越无法使用 off-policy*
+
+$$(1)\ \ \ \ Var_{x\sim{p}}[f(x)]=E_{x\sim{p}}[f(x)^2] - (E_{x\sim{p}[f(x)]})^2$$
+
+$$(2)\ \ \ \ Var_{x\sim{q}}[f(x)\frac{p(x)}{q(x)}]=E_{x\sim{p}}[f(x)^2\frac{p(x)}{q(x)}] - (E_{x\sim{p}[f(x)]})^2$$
+
+#+BEGIN_EXAMPLE
+两个分布的期望相同, 变异不同, 就如同下图所示:
+
+                         -------
+                       -/       \-
+                      /           \
+                    -/    -----    \-
+                    |   -/     \-   |
+                   /   /         \   \
+                  /    |         |    \
+                --+---/-----------\---+----
+        -------/ -----+-----------+-----   \-------
+    ---/  ------/|   /   /     \   \   |\------    \---
+  -/    -/       |   |   |     |   |   |       \-      \-
+ (     (         |   |   |     |   |   |         )
+  -\    -\       |   |   |     |   |   |       /-      /-
+    ---\  ------\|   \   \     /   /   |/------    /---
+        -------\ -----+-----------+-----   /-------
+                --+---\-----------/---+----
+                  \    |         |    /
+                   \   \         /   /
+                    |   -\     /-   |
+                    -\    -----    /-
+                      \           /
+                       -\       /-
+                         -------
+#+END_EXAMPLE
+
+
+
+
+
+图解: *为什么抽样数严重影响两者的变异数的差距呢*, 看下图:
+
+[[file:screenshot_2018-08-24_10-10-46.png]]
+
+如果 sample 的足够多, 样本集中就不仅仅包含概率较大的样本, 也包括概率较小的样本---比
+如下图 *左侧的绿色点*, 那里 $q(x)$ 很小, $p(x)$ 很大, 同时 $f(x)$ 为负,
+$f(x)\frac{q(x)}{p(x)}$ 就会是很大的负值, 与右侧那些绿点的结果相加去近似期望的时
+候有可能就会得到与等式左侧相近的值.
+
+
+*Important Sampling on Off-policy*
+
+#+DOWNLOADED: /tmp/screenshot.png @ 2018-08-24 10:47:13
+[[file:screenshot_2018-08-24_10-47-13.png]]
+
+
+这里 $A^{\theta}(s_t, a_t)$ 就是 advantage of (st, at) under theta. 我们是用
+accumulated reward of trajectory $R_{\theta}(\tau)$ with tips of "add base line"
+and "assign suitable credit" 来代表这个量.
+
+对于下图中的 $\frac{p_\theta(s_t)}{p_\theta^{ ' }(s_t)}$, 我们假设的是以
+$\theta$ 和以 $\theta^'$ 与环境互动过程中见到的 $s_t$ (场景)的概率是差不多的,所以 $\frac{p_\theta(s_t)}{p_\theta^{'}(s_t)}\approx{1}$
+
+但是 $\frac{p_{\theta}(a_t|s_t)}{p_\theta^{'}(a_t|s_t)}$ 中的
+$p_{\theta}(a_t|s_t)$ 和 $p_{\theta^{'}}(a_t|s_t)$ 是很好算的, 因为 $p_\theta$
+这里就是 NN 啊. 所以这两个概率都可以通过给NN输入 st, 把NN的输出作为这两个值的方
+法来获得.
+
+下图中的最后一步是从 Gradient 来反推那个求 Gradient 的式子, 根据如下公式(推荐背诵):
+
+$$
+\nabla{f(x)} = f(x)\nabla{logf(x)}
+$$
+
+其中,
+- 把 $p_{\theta}(a_t|s_t)$ 看成 $f(x)$
+- 把 $p_{\theta}(a_t|s_t)\nabla{ logp_{\theta}(a_t|s_t) }$ 看成 $f(x)\nabla{logf(x)}$, 继续等于 $\nabla{p_{\theta}(a_t|s_t)}$
+
+这样:
+
+$$
+E_{(s_t,a_t)\sim{\pi_{\theta^{'}}}}
+\left[\frac{p_\theta(a_t|s_t)}{p_\theta^{'}(a_t|s_t)}A^{\theta^{'}}\nabla{logp_\theta(a_t^n|s_t^n)}\right]}
+=
+E_{(s_t,a_t)\sim{\pi_{\theta^{'}}}}
+\left[\frac{\nabla{p_\theta(a_t|s_t)}}{{p_\theta^{'}(a_t|s_t)}}A^{\theta^{'}}\right]}
+$$
+
+对 *等式右边做积分* 就得到下图中最后一行的式子, 也就是说 *当我们使用
+off-policy(Important Sampling) 来更新 $\theta$ 的时候*,我们 *实际的 loss
+function* 就是下图 ppt 中最后一行, 其中
+$$J^{\theta^{'}}(\theta)$$ 的 $\theta^'$ 表示使用 $\theta^'$ 做抽样, 更新的是括号里的 $\theta$
+
+现在我们就彻底可以把 on-policy 换成 off-policy, 但是之前说过的问题是 *Important
+Sampling* 的问题是:
+
+#+BEGIN_QUOTE
+如果 p(x) 和 q(x) 差太多的话这种 Import Sampling 的方式就会不准, 具体表现是
+Variance 会差的比较多, 这种情况尤其在 sample 样本较少时更为凸显.
+#+END_QUOTE
+
+
+[[file:screenshot_2018-08-24_19-25-31.png]]
+
+我们只提出问题并没有解决, *PPO* ENTER! PPO 的本质就是在 *实际的 loss function*
+(这也是为什么我们推导 *实际的 loss function* 的原因) 基础上加上 *p(x) q(x) 差距
+的限制* 类似一个正则项去约束 w 一样, 这里在 loss-function 加入 *两个分布的 KL
+divergence* (KL 越大) 共同作为新的目标函数, 并在此基础上做优化, *分布的距离不能
+太大* 也就会被自动包含进优化考量中去.
+
+#+BEGIN_QUOTE
+注意这里是 gradient ascent, 换言之求 argmax, 所以这里 KL divergence 加入的方式是
+"-KL", 这个最大化那就是 KL 最小化, KL=0 时两个分布是一样的.
+#+END_QUOTE
+
+PPO / TRPO 的最大不同是 KL 项所处的位置, TRPO 是作为额外的限制条件, PPO 直接放在
+优化目标函数中.
+
+注意, 公式中的 $-\beta{KL(\theta, \theta^{'})}$, 中的 $KL(\theta, \theta^{'})$
+说的 *不是两个网络参数* 上的距离, 而是两个网络 *行为上的平均距离*.
+
+#+BEGIN_EXAMPLE
+     s1  ---------->             ----> 分布1 ---+
+     s2  ----------> +---------+ ----> 分布2 ---+------+
+     s3  ----------> |  NN  θ  | ----> 分布3 ---+------+------+
+     s4  ----------> +---------+ ----> 分布4    |      |      |
+     s5  ---------->             ----> 分布5  div1     |      |
+     ...                         ...            |     div2    |
+                                                |      |     div3
+                                                |      |      | ....
+     s1  ---------->             ----> 分布1 ---+      |      |     KL(θ, θ') = avg( sum of divs)
+     s2  ----------> +---------+ ----> 分布2 ----------+      |
+     s3  ----------> |  NN  θ' | ----> 分布3 -----------------+
+     s4  ----------> +---------+ ----> 分布4
+     s5  ---------->             ----> 分布5
+     ...                         ...
+#+END_EXAMPLE
+
+*行为上的平均距离* 就是对于输入网络的每个 st, 都会产生一个概率分布(类似 [0.01,
+ 0.09, 0.9], dimension of this vector decide by action space), 我就可以计算一次
+ KL, 记做 ~div1~.
+
+$$KL(\theta, \theta^{'})=\frac{1}{N}\sum_{n=1}^N{div_n}$$
+
+
+
+#+DOWNLOADED: /tmp/screenshot.png @ 2018-08-24 15:43:15
+[[file:screenshot_2018-08-24_15-43-15.png]]
+
+
+PPO 算法步骤具体如下:其中涉及 KL divergence 还有一个叫做 adaptive KL 的 trick,
+就是说 KL 这一项可以像正则项一样跟一个 *自适应* 参数 $\beta$, 用于调节优化器的注
+意力: $\beta$ 越大优化器越注重最小化 KL, 也就是最大化 "-KL"
+
+$$
+if\ KL(\theta, \theta^k) > KL_{max},\ then\ \uparrow\beta
+$$
+
+$$
+if\ KL(\theta, \theta^k) < KL_{min},\ then\  \downarrow\beta
+$$
+
+中的 $KL_{max}$ 和 $KL_{min}$ 是你自己设置的一个值, 当你计算出的 KL 大于你预设的
+KLmax 时说明优化器对 KL 项的优化不够, 就调大 $\beta$; 反之,就调小 $\beta$
+
+
+#+DOWNLOADED: /tmp/screenshot.png @ 2018-08-24 16:05:02
+[[file:screenshot_2018-08-24_16-05-02.png]]
+
+其实到目前为止介绍的 PPO算法叫做 PPO1, 还一种 PPO2, PPO2 算法的 loss function 看
+起来非常复杂但是实现起来比 PPO1 要简单许多, 因为没有 KL divergence.
+
+
+#+DOWNLOADED: /tmp/screenshot.png @ 2018-08-24 17:11:30
+[[file:screenshot_2018-08-24_17-11-30.png]]
+
+$$
+J_{PPO2}^{ \theta^k }(\theta) \approx{
+\sum_{ (s_t,a_t) }{ min
+\Bigg(
+\frac{p_\theta(a_t|s_t)}{p_{ \theta^{'} }(a_t|s_t)}
+A^{\theta^{k}}(s_t, a_t),
+\
+clip
+\bigg(
+\frac{p_\theta(a_t|s_t)}{p_{ \theta^{'} }(a_t|s_t)}, 1-\epsilon, 1+\epsilon
+\bigg)
+A^{\theta^{k}}(s_t, a_t)
+\Bigg)}
+}
+$$
+
+这里 ~clip(a,b,c)~ 是说, ~if a<b return b, if a>c return c~
+
+#+BEGIN_EXAMPLE
+clip(a, 0.8, 1.2)
+
+if a =   1, 0.8 < 1 < 1.2, then a =   1 ;
+if a = 0.6, means a < 0.8, then a = 0.8 ;
+if a = 1.6, means a > 1.6, then a = 1.6 ;
+#+END_EXAMPLE
+
+这里 ~min~ 中 *后* 一项去掉 $A^{\theta^{k}}(s_t, a_t)$
+
+$$
+clip
+\bigg(
+\frac{p_\theta(a_t|s_t)}{p_{ \theta^{'} }(a_t|s_t)}, 1-\epsilon, 1+\epsilon
+\bigg)
+$$
+
+的意思,可以通过下图 *蓝色* 线看出(纵轴是 clip 函数的输出, 横轴是 "P/P" 项):
+
+[[file:screenshot_2018-08-24_16-46-29.png]]
+
+这里 ~min~ 中 *前* 一项去掉 $A^{\theta^{k}}(s_t, a_t)$
+
+$$
+\frac{p_\theta(a_t|s_t)}{p_{ \theta^{'} }(a_t|s_t)}
+$$
+
+的意思,可以通过下图 *绿色* 线看出:
+
+[[file:screenshot_2018-08-24_16-53-33.png]]
+
+整体综合起来看这个公式, ~min~ 函数在做的事情就是 ~if A>0, choose min of (green,
+blue), else choose max~ 如下图所示:
+
+[[file:screenshot_2018-08-24_16-56-08.png]]
+
+也就是说:
+
+(注意, 这里 Pθk 是指第 k 次从 ~θ'~ 中抓取的 pair (st,at))
+
+当某轮中的 (st,at) 产生的累计分数是正的, 我们希望增加这个 (st,at) 的概率, 也就是
+增加 Pθ(at|st) 的概率, *但是* 考虑到 Important Sampling 的弊端我们又 *不希望*
+这个概率增加到离 Pθk(st,at) *太远* (~>1+ε~), 所以一旦增加后的 ~Pθ(at|st) >
+(1+ε) * Pθk(st,at)~ 就将其 clip 到 ~Pθ(at|st) = (1+ε) * Pθk(st,at)~, 以此保证:
+
+#+BEGIN_QUOTE
+if (st,at) is *good*, its probability will *increase properly*, not too much;
+if (st,at) is *bad*,  its probability will *decrease properly*, not too much;
+#+END_QUOTE
+
+
+这里有对比 PPO 与 A2C, CEM, TRPO的效果, 可以看到 PPO 很不错, 不是第一就是第二.
+
+[[file:screenshot_2018-08-24_17-09-51.png]]

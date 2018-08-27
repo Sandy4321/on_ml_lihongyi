@@ -1,0 +1,283 @@
+# -*- org-export-babel-evaluate: nil -*-
+#+PROPERTY: header-args :eval never-export
+#+PROPERTY: header-args:python :session CNN with Spatial Transforer
+#+PROPERTY: header-args:ipython :session CNN with Spatial Transforer
+#+HTML_HEAD: <link rel="stylesheet" type="text/css" href="/home/yiddi/git_repos/YIDDI_org_export_theme/theme/org-nav-theme_cache.css" >
+#+HTML_HEAD: <script src="https://hypothes.is/embed.js" async></script>
+#+HTML_HEAD: <script type="application/json" class="js-hypothesis-config">
+#+HTML_HEAD: <script src="https://cdn.mathjax.org/mathjax/latest/MathJax.js?config=TeX-AMS-MML_HTMLorMML"></script>
+#+OPTIONS: html-link-use-abs-url:nil html-postamble:nil html-preamble:t
+#+OPTIONS: H:3 num:t ^:nil _:nil tags:not-in-toc
+#+TITLE: CNN with Spatial Transformer
+#+AUTHOR: yiddishkop
+#+EMAIL: [[mailto:yiddishkop@163.com][yiddi's email]]
+#+TAGS: {PKGIMPT(i) DATAVIEW(v) DATAPREP(p) GRAPHBUILD(b) GRAPHCOMPT(c)} LINAGAPI(a) PROBAPI(b) MATHFORM(f) MLALGO(m)
+
+
+*Spatial Transformer Layer*
+
+
+CNN 是没法做到 +scaling+ 和 +rotation+ 和 +segmentation+ 的.
+
+#+BEGIN_QUOTE
+Spatial Transformer Layer 的作用就是对 Image 做旋转/缩放/截取.
+
+其中截取这件事情有点像是 RNN 中的 *attention*.
+#+END_QUOTE
+
+虽然叫做 "Layer" 但其实他是一个 NN, 他可以跟 CNN 串在一起训练. 而且他不但可以
+transform 输入的图片, 也可以对 feature map 进行 transform.
+
+#+BEGIN_EXAMPLE
+| A | A | A |              | 0 | 0 | 0 |
+| B | B | B |   ------->   | A | A | A |
+| C | C | C |              | B | B | B |
+
++--+--+--+--+--+--+--+--+--+
+|  |  |  |  |  |  |  |  |  |
++--+--+--+--+--+--+--+--+--+                        A          0     1
+|  |  |  |  |  |  |  |  |  |                          \
++--+--+--+--+--+--+--+--+--+                        A  \       0     2
+|  |  |  |  |  |  |  |  |  |                            \
++--+--+--+--+--+--+--+--+--+                        A    \     0     3
+| 1| 0| 0| 0| 0| 0| 0| 0| 0|                              \
++--+--+--+--+--+--+--+--+--+                        B      \   A     4
+| 0| 1| 0| 0| 0| 0| 0| 0| 0| <--- inner_prod ---            \
++--+--+--+--+--+--+--+--+--+                        B          A     5 <-
+| 0| 0| 1| 0| 0| 0| 0| 0| 0|                                /
++--+--+--+--+--+--+--+--+--+                        B      /   A     6
+|  |  |  |  |  |  |  |  |  |                              /
++--+--+--+--+--+--+--+--+--+                        C    /     B     7
+|  |  |  |  |  |  |  |  |  |                            /
++--+--+--+--+--+--+--+--+--+                        C  /       B     8
+|  |  |  |  |  |  |  |  |  |                          /
++--+--+--+--+--+--+--+--+--+                        C          B     9
+#+END_EXAMPLE
+
+因为 $W$ 矩阵的 *第i行* 对输入做转换 $W_i \cdot x = x'$ 得到的就是 $x'$ 向量 *第
+i位*.
+
+所以根据这条规则, 完全可以按照行数把对应位置设置为1, 其余位置设置为 0.
+
+
+#+DOWNLOADED: /tmp/screenshot.png @ 2018-08-27 19:54:45
+[[file:screenshot_2018-08-27_19-54-45.png]]
+
+
+问题是怎么找这些 weight 呢. 我们可以使用一个 NN 来控制 *两个图片矩阵的连接方式*,
+把上一层 layer 的输出丢给一个 NN 作为输入, 这个 NN 会输出一些 *值*, 根据这些值就
+可以决定下一层的各个神经元要如何连接到上一层的神经元.
+
+
+[[file:screenshot_2018-08-27_20-00-47.png]]
+
+
+*如何放大原图*
+
+把原来 (x,y) 位置上的像素, 放到 (2x, 2y) 的位置上对所有的像素都做这种处理.
+
+*如何缩小原图*
+
+把原来 (x,y) 位置上的像素, 放到 (x/2, y/2) 的位置上对所有的像素都做这种处理.
+
+*如何平移*
+
+把原来 (x,y) 位置上的像素, 放到 (x+0.5, y+0.5) 的位置上对所有的像素都做这种处理.
+
+[[file:screenshot_2018-08-27_20-06-09.png]]
+
+
+[[file:screenshot_2018-08-27_20-06-36.png]]
+
+
+旋转平移缩放 这三种操作统称为 *affine transform*
+
+通过上面分析可知, 只需要确定六个值, 你就可以把原图中 (x,y) 位置的像素放置到新的
+位置 (x', y') 上.
+
+这里注意:
+1. ~(x',y')~ 是 *l-1* 层的神经元换成矩阵顺序后的索引.
+2. ~(x,y)~   是 *l*   层的神经元换成矩阵顺序后的索引.
+3. NN 矩阵接受一张图片作为输入, 输出6个值, 这6个值与l层的索引做运算之后就可以知
+   道 *自己的值(某个神经元的输出)与 l-1 层哪个索引的值(某个神经元的输出)一样*.
+
+[[file:screenshot_2018-08-27_20-41-09.png]]
+
+[[file:screenshot_2018-08-27_20-50-40.png]]
+
+#+BEGIN_EXAMPLE
+layer l 层的第(2,2)神经元, 也就是第5个神将元想知道自己的值应该从 l-1 层的哪个神经元 copy.
+于是他通过 NN 的输出(那 6 个值)来找.
+
+假设 NN 输出的 6 个值是
+__    __  __  __
+| 0  1 |  | -1 |
+| 1  0 |  | -1 |
+--    --  --  --
+
+    +-----------------------------------------------------------+
+    |                                                           |
+    v                                                           |
+    A          ?     (1,1)                                      |
+      \                                                         |
+    A  \       ?     (1,2)                                      |
+        \                                                       |
+    A    \     ?     (1,3)                                      |
+          \                                                     |
+    B      \   ?     (2,1)                                      |
+            \                    __    __ __ __      __  __   __ __
+    B        > ?=A   (2,2)  ->   | 0  1 | | 2 |      | -1 |   | 1 |
+                                 | 1  0 | | 2 |  +   | -1 | = | 1 |
+    B          ?     (2,3)       --    -- -- --      --  --   -- --
+
+    C          ?     (3,1)
+
+    C          ?     (3,2)
+
+    C          ?     (3,3)
+#+END_EXAMPLE
+
+
+
+#+DOWNLOADED: /tmp/screenshot.png @ 2018-08-27 21:19:56
+[[file:screenshot_2018-08-27_21-19-56.png]]
+
+#+BEGIN_EXAMPLE
+layer l 层的第(2,2)神经元, 也就是第5个神将元想知道自己的值应该从 l-1 层的哪个神经元 copy.
+于是他通过 NN 的输出(那 6 个值)来找.
+
+假设 NN 输出的 6 个值是
+__    __  __  __
+|0  0.5|  | 0.6|
+|1    0|  | 0.4|
+--    --  --  --
+
++-- ? choose neast ? <------------------------------------------+
+|                                                               |
+|                                                               |
+|   A          ?     (1,1)                                      |
+|                                                               |
+|   A          ?     (1,2)                                      |
+|                                                               |
+|   A          ?     (1,3)                                      |
+|                                                               |
+|   B          ?     (2,1)                  v                   |
+|                                __    __ __ __      __  __   __ __
++-> B  ----->  ?=B   (2,2)  ->   |0  0.5| | 2 |      |0.6 |   |1.6|
+                                 |1    0| | 2 |  +   |0.4 | = |2.4|
+    B          ?     (2,3)       --    -- -- --      --  --   -- --
+
+    C          ?     (3,1)
+
+    C          ?     (3,2)
+
+    C          ?     (3,3)
+#+END_EXAMPLE
+
+如果这六个值正好都是整数, 那还能做, 但如果不是整数的话, 那么得到的转换后矩阵的坐
+标就是 *小数*, 其实小数还不是最大的问题, 可以采取 *就近* 的原则, 取最近的坐标即
+可. 最大的问题是这个能用梯度下降来解么. 毫无疑问, 就目前的状况看 *没法用梯度下
+降* 来解,原因很简单,
+
+#+BEGIN_QUOTE
+如果给予输入一个 *很小的改变*, 按照就近的原则你可能还是得到相同的转换后矩阵的坐
+标. 换言之, 输入上很小的改变并没有在输出端造成任何影响, 所以微分为0.
+#+END_QUOTE
+
+
+*Interpolation*
+
+如果改成 Interpolation: 也就是某个点的值, 由周围四个点同时决定, 决定的方式是按照
+横纵坐标举例按比例分配.
+
+
+[[file:screenshot_2018-08-27_21-22-14.png]]
+
+#+BEGIN_EXAMPLE
+layer l 层的第(2,2)神经元, 也就是第5个神将元想知道自己的值应该从 l-1 层的哪个神经元 copy.
+于是他通过 NN 的输出(那 6 个值)来找.
+
+假设 NN 输出的 6 个值是
+__    __  __  __
+|0  0.5|  | 0.6|
+|1    0|  | 0.4|
+--    --  --  --
+                             Interpolation: the farther
+                             distance the smaller influence
++---------------------------------------------------------------------------------+
+|                                                                                 |
+|  layer:     layer:                                                              |
+|  l-1         l                                                                  |
+|                                                                                 |
+|   A          ?                       (1,1)                                      |
+|                                                                                 |
++-> A  ---+    ?                       (1,2)                                      |              x,y
+|         |                                                                       |             [1,2]
++-> A  ---+    ?                       (1,3)                                      |             [1,3]
+|         |                                                                       |             [2,2]
+|   B     |    ?                       (2,1)                  v                   |             [2,3]
+|         |                                        __    __ __ __      __  __   __ __
++-> B  ---+--> ? =(1-0.6)*(1-0.4)*A+   (2,2)  ->   |0  0.5| | 2 |      |0.6 |   |1.6| index_x:  1<1.6<2
+|         |       (1-0.6)*(1-0.6)*A+               |1    0| | 2 |  +   |0.4 | = |2.4| index_y:  2<2.4<3
++-> B  ---+    ?  (1-0.4)*(1-0.4)*B+   (2,3)       --    -- -- --      --  --   -- --
+                  (1-0.4)*(1-0.6)*B
+    C          ?                       (3,1)
+
+    C          ?                       (3,2)
+
+    C          ?                       (3,3)
+#+END_EXAMPLE
+
+
+用 Interpolation 方法来决定 l-1 层神经元的坐标就可以使用梯度下降法来解决.
+
+1. 如果这6个值有一点点改变, 那么得到的 Index of layer l-1 会发生改变.
+2. 如果 Index of layer l-1 有所改变就会使得 l 层的这个(与6个值做运算的)神经元的
+   *输出* 就会发生改变.
+
+
+论文中的架构如下:
+
+- 图中的 U 表示输入的图片, 论文中的图片有很深的图层(通道);
+- 图中 Localisation network 就是可以输出 6 个参数的 NN;
+- 图中用黄色的菱形表示整个 Spatial Transformer, 图中下半部分就表示这个 Spatial
+  Transformer 既可以用在输入层的原始图片上, 也可以用在任何一层的 feature map 上.
+- 你甚至可以对同一层 feature map 使用两种不同的 Spatial Transformer
+
+#+DOWNLOADED: /tmp/screenshot.png @ 2018-08-27 23:10:10
+[[file:screenshot_2018-08-27_23-10-10.png]]
+
+
+
+#+DOWNLOADED: /tmp/screenshot.png @ 2018-08-27 23:11:19
+[[file:screenshot_2018-08-27_23-11-19.png]]
+
+门牌号数字辨识
+
+- 下图中的 "ST" 就是 Spatial Transformer layer;
+- 门牌号图片内不止 1 个数字, 最多可以有 5 个数字.
+- 每 11 维对应到 1 个数字, 前 10 维对应 0~9, 最后一维表示该位置无数字.
+- 所以整个 NN 的输出有 55 维, 图中展示的输出 *260* 实际是 *260 null null*
+- 表格中展示的是错误率, 可以看到最好的是 *Multi-ST-CNN*
+- 图中下半部分展示的是如果把这么多的 ST 综合起来看,他们做的事情就是把门牌号图片
+  内的数字 *截取* *旋转* *放大*
+
+#+BEGIN_EXAMPLE
+260 =
+                                                                                         null                   null
+                                                                                          v                      v
+[0 0 1 0 0 0 0 0 0 0 0][0 0 0 0 0 0 1 0 0 0 0][1 0 0 0 0 0 0 0 0 0 0][0 0 0 0 0 0 0 0 0 0 1][0 0 0 0 0 0 0 0 0 0 1]
+ ---------------------  ---------------------  ---------------------  ---------------------  ---------------------
+         2                        6                      0                    null                   null
+#+END_EXAMPLE
+
+[[file:screenshot_2018-08-27_23-11-58.png]]
+
+
+*鸟图辨识*
+
+- 图中的矩阵是说, 我们原来的 ST 是输出 6 个数值, 它可以做 *旋转* *缩放* *平移*,
+  现在固定住6个数字中的2个, 使其始终为0, 那么这个 ST 只能 *放缩* *平移* 不能
+  +旋转+.
+
+[[file:screenshot_2018-08-27_23-26-42.png]]

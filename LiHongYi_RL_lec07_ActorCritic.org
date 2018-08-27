@@ -1,0 +1,146 @@
+# -*- org-export-babel-evaluate: nil -*-
+#+PROPERTY: header-args :eval never-export
+#+PROPERTY: header-args:python :session A3C
+#+PROPERTY: header-args:ipython :session A3C
+#+HTML_HEAD: <link rel="stylesheet" type="text/css" href="/home/yiddi/git_repos/YIDDI_org_export_theme/theme/org-nav-theme_cache.css" >
+#+HTML_HEAD: <script src="https://hypothes.is/embed.js" async></script>
+#+HTML_HEAD: <script type="application/json" class="js-hypothesis-config">
+#+HTML_HEAD: <script src="https://cdn.mathjax.org/mathjax/latest/MathJax.js?config=TeX-AMS-MML_HTMLorMML"></script>
+#+OPTIONS: html-link-use-abs-url:nil html-postamble:nil html-preamble:t
+#+OPTIONS: H:3 num:t ^:nil _:nil tags:not-in-toc
+#+TITLE: 李宏毅RL第7课:A3C
+#+AUTHOR: yiddishkop
+#+EMAIL: [[mailto:yiddishkop@163.com][yiddi's email]]
+#+TAGS: {PKGIMPT(i) DATAVIEW(v) DATAPREP(p) GRAPHBUILD(b) GRAPHCOMPT(c)} LINAGAPI(a) PROBAPI(b) MATHFORM(f) MLALGO(m)
+
+
+A3C - Asynchronous Advantage Actor Critic
+
+
+#+DOWNLOADED: /tmp/screenshot.png @ 2018-08-27 01:00:31
+[[file:screenshot_2018-08-27_01-00-31.png]]
+
+对于 Policy Gradient 来说, 图中画蓝色线条的部分是非常的不稳定的, 因为我们的交互
+过程基本等同于抽样, 而且我们抽样的数量肯定无法跟 *所有可能的画面* 相提并论亦即我
+们的抽样很少. 这样上面蓝色部分的分数就会非常的 unstable. 那么我们求出的
+$\nabla{\bar{R_{\theta}}}$ 就会难于收敛.
+
+如果我们不是用蓝色部分的分数来作为某个 P(at|st) 的更新权重, 取而代之使用蓝色部分
+的期望, 并且能学到一个函数用来表示这个期望值的话, 生活更美好. 很不巧的是蓝色部分
+的期望值恰好就是 $Q^{\pi}$ 的定义.
+
+下图中释义, 因为 $V^{\pi}(s)$ 第一步采取 $\pi$ 而 $Q^{\pi}$ 第一步采取 $a$ 所以有:
+
+$$
+V^{\pi}(st) = E_{a_t\sim{P_{\pi}}}[Q^{\pi}(s_t,a_t)]
+$$
+
+亦即, V 是 Q 的期望值, Q 就可以作为蓝色部分, V 就可以作为 baseline.
+
+
+
+#+DOWNLOADED: /tmp/screenshot.png @ 2018-08-27 01:14:17
+[[file:screenshot_2018-08-27_01-14-17.png]]
+
+
+#+DOWNLOADED: /tmp/screenshot.png @ 2018-08-27 01:17:00
+[[file:screenshot_2018-08-27_01-17-00.png]]
+
+
+#+DOWNLOADED: /tmp/screenshot.png @ 2018-08-27 01:19:28
+[[file:screenshot_2018-08-27_01-19-28.png]]
+
+
+通常情况下, 如果你使用 RL 来玩电玩, 你首先需要利用 CNN 类似的网络把复杂的游戏画
+面信息转换成一个更抽象的信息. 并将这样的信息作为 RL 的输入. 这一过程通常在算法伪
+代码中会表示成 $\phi(s)$.
+
+
+通常情况下, 我们会倾向于给 $\pi(s)$ 对应的NN(policy gradient NN, output a
+distribution of action space)加一个限制, 希望其输出(输出为各个anction的概率值构
+成的概率分布)的熵越大越好, 越大越好的意思就是说各个概率的值差不多.
+
+$$
+H(p) = -\int_x{p(x)logp(x)dx \approx {\sum_x{p(x)logp(x)}}}
+$$
+
+这样做可以保证我们在 Testing 的时候可以充分的 exploration 收集更多的可能, 才能训
+练出更好的结果.
+
+
+
+#+DOWNLOADED: /tmp/screenshot.png @ 2018-08-27 01:34:28
+[[file:screenshot_2018-08-27_01-34-28.png]]
+
+RL 的问题是非常慢的, 可以使用异步服务器.
+
+
+#+DOWNLOADED: /tmp/screenshot.png @ 2018-08-27 01:49:14
+[[file:screenshot_2018-08-27_01-49-14.png]]
+
+
+
+1. 假设你使用 8 个分机(worker)去跑优化;
+2. 每个分机跑之前先从服务器端(global network)拷贝整个网络(包含 PolicyNN 和
+   ValueNN)的参数 $\theta$
+3. 每个分机都各自与环境做互动,收集data.
+4. 然后每个分机都各自训练自己的NN, 求 $\nabla{\theta}$ 并更新自己的参数.
+5. 分机把 $\nabla{\theta}$ (注意不是 +更新后的自己的参数+ )传递给服务器端, 服务
+   器端也使用该 $\nabla{\theta}$ 更新自己的参数 $\theta \leftarrow \theta + \nabla{\theta}$.
+6. 但是这么多分机都上传 $\nabla{\theta}$ 会造成各自覆盖, 不用管就直接训练下去.
+
+
+
+*Pathwise Derivative Policy Gradient*
+
+这种方法很特别, 可以看成是 QLearning 解决 continuous action 的方法; 也可以看成是
+一种特别的 Actor-Critic 方法.
+
+| 一般的 actor-critic 算法 | PDPG 算法                      |
+|--------------------------+--------------------------------|
+| "你这样做是不好的"       | "你这样做是不好的, 你应该xxxx" |
+
+
+
+#+DOWNLOADED: /tmp/screenshot.png @ 2018-08-27 01:49:33
+[[file:screenshot_2018-08-27_01-49-33.png]]
+
+Actor 现在就负责来解决 ~a=argmax[Q(s,a)]~
+
+#+BEGIN_QUOTE
+这里跟 GAN 非常相似:我们训练一个鉴别器, 它只负责检测一个东西好不好, 如果让他自己
+产生东西是非常困难的. 怎么办, 用生成器负责生成.
+#+END_QUOTE
+
+这里概念类似:
+- Q 就是鉴别器, 要根据鉴别器来生成(找到)最好的产品(action)很困难;
+- Actor 就是生成器, 原来的 actor-critic 方法中 critic 并没有给 actor 足够的资讯
+  --- 而只是告诉他 "good or bad", 而现在有新的方法告诉 actor 什么样叫做好的.
+
+
+
+
+#+DOWNLOADED: /tmp/screenshot.png @ 2018-08-27 01:57:22
+[[file:screenshot_2018-08-27_01-57-22.png]]
+
+这种结构的网络是什么, 这完完全全就是一个 GAN 的结构.
+
+
+#+DOWNLOADED: /tmp/screenshot.png @ 2018-08-27 02:01:38
+[[file:screenshot_2018-08-27_02-01-38.png]]
+
+这是普通的 QLearning 算法:
+
+
+#+DOWNLOADED: /tmp/screenshot.png @ 2018-08-27 02:04:37
+[[file:screenshot_2018-08-27_02-04-36.png]]
+
+下面是 PPDG 算法, 只需更改上面的算法的 *4* 个地方, 如下图示, 总体就是 argmax a
+出现的地方就换成 actor $\pi$ 网络. actor 只是计算 argmax a 并没有取代 Q 网络.
+
+(注意算法伪代码中 $\hat{\pi}$ 跟 $\hat{Q}$ 的作用是一样的 --- 固定作为QNN的
+TargetNetwork.)
+
+
+#+DOWNLOADED: /tmp/screenshot.png @ 2018-08-27 02:11:15
+[[file:screenshot_2018-08-27_02-11-15.png]]
